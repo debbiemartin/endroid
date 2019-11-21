@@ -76,7 +76,7 @@ class Invite(CommandPlugin):
 
         """
         args, kwargs = parse_string(arg, self.PARSE_OPTIONS)
-        users = [msg.sender_full]
+        users = [msg.sender]
         rooms = set(args + kwargs.get("to", [])) or ["all"]
 
         results = self._do_invites(users, rooms)
@@ -100,7 +100,7 @@ class Invite(CommandPlugin):
     def invite_users(self, msg, arg):
         """Invite a list of users to a list of rooms."""
         args, kwargs = parse_string(arg, self.PARSE_OPTIONS)
-        users = replace(args, "me", msg.sender_full)
+        users = replace(args, "me", msg.sender)
         rooms = kwargs.get("to", [])
 
         results = self._do_invites(users, rooms)

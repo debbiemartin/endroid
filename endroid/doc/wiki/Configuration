@@ -17,12 +17,9 @@ The basic sections of the config file are described below:
 # Comments are denoted by a hash character in the first column
 
 [Setup]
-# EnDroid's jabber login details.
-jid = marvin@hhgg.tld/planet
-password = secret
-
-# EnDroid's default nickname. If not specified, set to the part of jid before the @
-# nick = Marvin
+# EnDroid's Webex Teams authorization token must be specified so that EnDroid
+# can send messages and open its web socket
+authorization = myauthorizationkey
 
 # EnDroid's full contact list. Users on this list will be added as friends,
 # users not on this list will be removed from contacts and will be unable
@@ -30,7 +27,7 @@ password = secret
 users =
 
 # What rooms EnDroid will attempt to create and join. Defaults to []
-# rooms = room1@ser.ver,
+# rooms = room1id,
 
 # What usergroup EnDroid will register plugins with. Defaults to ['all']
 # groups = all, admins

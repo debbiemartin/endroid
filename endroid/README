@@ -4,14 +4,14 @@ ___________      ________               .__    .___
  |        \   |  \|    `   \  | \(  <_> )  / /_/ | 
 /_______  /___|  /_______  /__|   \____/|__\____ | 
         \/     \/        \/                     \/ 
-* EnDroid XMPP Bot
+* EnDroid Webex Bot
 
 
 * Introduction
-** Endroid is an extensible XMPP bot, built with a plugin architecture
+** Endroid is an extensible Webex bot, built with a plugin architecture
 ** The endroid.sh script in the src directory may be used to start EnDroid easily, e.g. for testing
 
 * Example configuration
-** You should register a Jabber ID for your EnDroid, e.g. at https://register.jabber.org/
+** You should create a Webex bot ID for your EnDroid at https://developer.webex.com/my-apps/new/bot
 ** Put config in ~/.endroid/endroid.conf see etc/endroid.conf for an example config file.
 

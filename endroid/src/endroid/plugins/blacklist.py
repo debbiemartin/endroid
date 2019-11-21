@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Endroid - XMPP Bot
+# Endroid - Webex Bot
 # Copyright 2012, Ensoft Ltd.
 # Created by Martin Morrison
 # -----------------------------------------------------------------------------
@@ -22,7 +22,7 @@ class Blacklist(Plugin):
     list is silently dropped, without allowing any handlers to be called for
     them.
     """
-    help = "Maintain a blacklist of JIDs who get ignored by EnDroid."
+    help = "Maintain a blacklist of users who get ignored by EnDroid."
     hidden = True
 
     _blacklist = set()
@@ -59,7 +59,7 @@ class Blacklist(Plugin):
         Send filter callback - checks the message recipient against the
         blacklist
         """
-        return msg.sender not in self.get_blacklist()
+        return msg.recipient not in self.get_blacklist()
 
     def command(self, msg):
         """

@@ -1,5 +1,5 @@
 [Unit]
-Description=Endroid XMPP bot Author Ensoft Limited
+Description=EnDroid Webex bot Author Ensoft Limited
 After=networking.service
 
 # Only respawn a max 10 times in a 5s period, otherwise fail.

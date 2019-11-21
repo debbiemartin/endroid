@@ -1,5 +1,5 @@
 # -----------------------------------------
-# Endroid - XMPP Bot
+# Endroid - Webex Bot
 # Copyright 2012, Ensoft Ltd.
 # Created by Jonathan Millican
 # -----------------------------------------
@@ -330,7 +330,7 @@ class PluginManager(object):
                           "define a Plugin".format(modname))
             return
         else:
-            plugin._setup(self, self._plugin_cfg[modname])
+            plugin._setup(self, self._plugin_cfg[modname]) 
             self._loaded[modname] = plugin
 
     def _load_plugins(self):

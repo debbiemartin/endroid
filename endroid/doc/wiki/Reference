@@ -10,7 +10,6 @@ functionality.
 
 = Glossary =
  muc/chat:: A muc (Multi-User Chat) message is one sent in or to a room (group chat). A chat message is one sent to a single user.
- jid:: The address of a user or room. This is a different format depending on the entity being addressed and plugins shouldn't need to know the format being used. However in case its useful it will be: {{{user@ho.s.t}}} for a single user, {{{room_name@serv.er}}} for a room and {{{room_name@serv.er/user_nickname}}} for a user in a room.
 
 = Core Endroid =
 
@@ -45,7 +44,7 @@ class Plugin(object):
        (single user chat - active in a user group).
      - place_name
        The name of the environment the plugin is active in - either a room's
-       address (room@serv.er) or the name of a user group.
+       ID or the name of a user group.
      
      - vars
        A dictionary of config options read from the section in EnDroid's
@@ -131,7 +130,7 @@ Plugins are separately instantiated in each room they are configured in and for 
 variable should be used.
 
 Plugins can find out information about their environment via {{{self.place}}} and {{{self.place_name}}} which return the type of environment ({{{"room"}}} or {{{"group"}}}) and the name of the
-environment (e.g. {{{"room1@serv.er"}}} or {{{"admins"}}}) respectively.
+environment (e.g. {{{"room1id"}}} or {{{"admins"}}}) respectively.
 
 == MessageHandler, Message ==
 
@@ -139,7 +138,7 @@ APIs for !EnDroid's message functionality.
 
 {{{#!highlight python
 class MessageHandler(object):
-    """A class abstracting XMPP's message protocols."""
+    """A class abstracting Webex's message protocols."""
 
     def send_muc(self, room, body, source=None, priority=PRIORITY_NORMAL):
         """
@@ -159,8 +158,8 @@ class MessageHandler(object):
 
         The message will be run through any registered filters before it is
         sent.
-        
-        <source> and <priority> are the same as in send_muc.        
+
+        <source> and <priority> are the same as in send_muc.
 
         response_cb is an optional callback to be called to handle the next
         message received from the user. (Note that only the latest such callback
@@ -168,8 +167,9 @@ class MessageHandler(object):
         only the final send_chat's callback will be called.)
         This callback must take one argument (a Message object).
         no_response_cb is an optional callback to be called if the user does
-        not give a response in <timeout> seconds. It takes only a <sender> JID
-        string. <timeout> defaults to config option context_response_timeout.
+        not give a response in <timeout> seconds. It takes only a <sender> 
+        username string. <timeout> defaults to config option 
+        context_response_timeout.
         Either response_cb or no_response_cb can be provided without the other.
         If response_cb is not specified but no_response_cb is, Endroid
         effectively waits for the timeout to elapse; if the user didn't reply
@@ -185,10 +185,6 @@ class Message(object):
 
     Attributes:
       - sender - a string representing the sender's userhost.
-      - sender_full - a string representing the sender's full jid.
-      Note: sender_full is used to reply to messages so that if a user is
-      online on more than one resource the reply will go to the right one.
-
       - body - the text of the message.
       - recipient - a string representing the address to send the message to
       - priority - a number, lower = more important (unused by EnDroid, can
@@ -247,17 +243,17 @@ context_response_timeout = 30
 == UserManagement ==
 
 Note: all the get_ methods take a name string which is one of:
- * The jid of a room
+ * The ID of a room
  * The name of a usergroup
  * None (in which case results will be looked for in !EnDroid's contact list)
 
 {{{#!highlight python
 class UserManagement(object):
     """
-    A class abstracting XMPP's presence protocols.
+    A class abstracting Webex's presence protocols.
 
-    In the get_ member functions, name (a userhost string e.g. user@ho.st or 
-    room@serv.er) specifies in which room or group to run a search. If it is
+    In the get_ member functions, name (a username string e.g. user@na.me or 
+    roomid) specifies in which room or group to run a search. If it is
     None, the search will be run on EnDroid's contact list (of rooms or users
     depending on the function).
 
@@ -280,13 +276,6 @@ class UserManagement(object):
 
     def get_available_rooms(self, user=None):
         """Return an iterable of rooms the user is present in."""
-
-    def get_nickname(self, user, place=None):
-        """
-        Given a user jid (user@ho.s.t) return the user's nickname in place,
-        or if place is None (default), the user part of the jid.
-
-        """
 
     def invite(self, user, room, reason=None):
         """
@@ -316,24 +305,15 @@ class UserManagement(object):
         The "specified way" is determined by which combination of available=True
         and unavailable=True is supplied to register_presence_callback.
         Raises ValueError if neither available nor unavailable is passed as True.
-        :param user: partial JID of the user to associate this callback with
+        :param user: the user to associate this callback with
         :param callback: a callback, no arguments, to be called when the user changes presence
         :param available: set True to have callback fire when user comes online
         :param unavailable: set True to have callback fire when user goes offline
         """
-
-    def ping(self, jid):
-        """
-        XMPP Pings a string JID.
-        Ignores any pong we might receive.
-        :param JID: string JID of the user to ping.
-        """
-
 }}}
 
 === Presence callbacks ===
 The function {{{Plugin.rosters.register_presence_callback}}} allows plugins to register callbacks to be triggered when a specified user changes state from Unavailable to Available, or vice versa. The callback should take no arguments, and it must not block, because Endroid may execute them on the main thread. The list of callbacks is not permanent: it is forgotten when Endroid is terminated.
-An example of the use of this API is the {{{pounce}}} plugin.
 
 = Utilities =
 
@@ -602,7 +582,7 @@ global_bucket_fillrate = 0.2
 
 {{{#!highlight python
 class SMS(CommandPlugin):
-    """Allows plugins to send SMS messages to users; exposes relevant functions in XMPP."""
+    """Allows plugins to send SMS messages to users; exposes relevant functions in Webex."""
 
     class UserNotFoundError(Exception):
         """Error when we try to get the number of someone who hasn't told Endroid their number."""
@@ -627,21 +607,21 @@ class SMS(CommandPlugin):
 
     def get_phone_number(self, user):
         """
-        Fetch the stored number for a JID; raise UserNotFoundError if it doesn't exist
-        :param user: the JID string of the user to search for
+        Fetch the stored number for a user; raise UserNotFoundError if it doesn't exist
+        :param user: the user to search for
         :return: a string phone number
         """
 
     def number_known(self, user):
         """
-        Returns bool(we have a number stored for this JID user).
-        :param user: JID string of user to check
+        Returns bool(we have a number stored for this user).
+        :param user: user to check
         :return: True/False if we do/don't know their number.
         """
 
     def send_sms(self, sender, jid, message):
         """
-        Sends an SMS to the user with the specified JID.
+        Sends an SMS to the user with the specified user.
         Returns a Deferred which acts as a string containing the server's
         response.
         Raises self.SMSError or its descendants if there is an error.
@@ -712,31 +692,3 @@ class PatternMatcher(Plugin):
 For a usecase, look at the {{{spell}}} plugin, which looks for a {{{(sp?)}}} in a message.
 (Notice, however, that this is currently broken since the retirement of Google's spelling API.)
 
-== ReliableSend ==
-
-Ask Endroid to send a message to a user; if that user is offline, Endroid sends the message when they next come online.
-
-{{{
-class ReliableSend(CommandPlugin):
-    """Plugin to send messages to a user, storing them if they are offline."""
-
-    def _delete_messages(self, recipient):
-        """
-        Deletes all messages that were stored for later sending.
-        Take care with this: it will allow you to delete even messages your
-        plugin didn't send.
-        :param recipient: JID of the person in question
-        """
-
-    def send_reliably(self, sender, message_text, recipient):
-        """
-        Sends a message to a user so that they will receive it eventually.
-        If the user is offline, stores the message and sends it when they come
-        online next.
-        :param sender: who sent the message (JID)
-        :param message_text: text of the message
-        :param recipient: who is to receive the message (JID)
-        :return: False if the recipient was already online and so we sent the
-         messages immediately; True if we stored them.
-        """
-}}}

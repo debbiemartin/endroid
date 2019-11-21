@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Endroid - XMPP Bot - Correction plugin
+# Endroid - Webex Bot - Correction plugin
 # Copyright 2012, Ensoft Ltd.
 # Created by Martin Morrison
 # -----------------------------------------------------------------------------
@@ -70,6 +70,6 @@ class Correct(Plugin):
             # This is unexpected. Probably a mistake on the user's part?
             msg.unhandled()
         else:
-            sendernick = self.rosters.nickname(msg.sender_full)
+            sendernick = self.rosters.nickname(msg.sender)
             who = sendernick if self.place == "room" else "You"
             msg.reply("%s meant: %s" % (who, newstr))

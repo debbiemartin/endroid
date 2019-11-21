@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Endroid - XMPP Bot - Rate Limiting plugin
+# Endroid - Webex Bot - Rate Limiting plugin
 # Copyright 2012, Ensoft Ltd.
 # Created by Martin Morrison
 # -----------------------------------------------------------------------------
@@ -8,6 +8,7 @@
 import time
 import logging
 from collections import defaultdict, deque
+import trace
 
 from endroid.pluginmanager import Plugin
 from endroid.messagehandler import Priority
@@ -120,7 +121,6 @@ class SendClass(object):
 
     def accept_msg(self, msg):
         accept = self._accept()
-        
         if accept:
             # We can send a message, now lets find out which message
             if len(self.queue) > 0:
@@ -145,7 +145,7 @@ class RateLimit(Plugin):
     """
     name = "ratelimit"
     hidden = True
-    help = "Implements a Token Bucket rate limiter, per recipient JID"
+    help = "Implements a Token Bucket rate limiter, per recipient user"
     preferences = ("endroid.plugins.blacklist",)
 
     def endroid_init(self):
@@ -217,7 +217,7 @@ class RateLimit(Plugin):
         if not self.abusers[msg.sender].use_token():
             if self.blacklist is not None:
                 logging.info("Blacklisting abusive user {}".format(msg.sender))
-                self.blacklist.blacklist(msg.sender.userhost(),
+                self.blacklist.blacklist(msg.sender, 
                                          self.abusecooloff)
             else:
                 logging.info("Detected abusive user ({}) but unable to "

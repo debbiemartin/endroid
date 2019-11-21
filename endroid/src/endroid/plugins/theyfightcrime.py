@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Endroid - XMPP Bot - They Fight Crime
+# Endroid - Webex Bot - They Fight Crime
 # Copyright 2012, Ensoft Ltd.
 # Created by Martin Morrison
 # -----------------------------------------------------------------------------

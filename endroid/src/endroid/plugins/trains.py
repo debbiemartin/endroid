@@ -56,13 +56,13 @@ class TrainTimes(CommandPlugin):
     def nearest_station(self, msg, args):
         # Use msg.sender_full (with resource) because a person might
         # be in different locations with different resources
-        self._station_update(msg, args, STATION_TABLE, msg.sender_full,
+        self._station_update(msg, args, STATION_TABLE, msg.sender,
                              "nearest")
 
     @command(helphint="{<station name>|delete}")
     def home_station(self, msg, args):
         # Use msg.sender (no resource) because a person probably
-        # lives in the same place regardless of XMPP resource
+        # lives in the same place regardless of Webex resource
         self._station_update(msg, args, HOME_TABLE, msg.sender, "home")
 
     @command(helphint="from <stn> to <stn> [[arriving|leaving] at <time>]",
@@ -102,7 +102,7 @@ class TrainTimes(CommandPlugin):
                 return
         if src is None:
             rows = self.database.fetch(STATION_TABLE, ("station",),
-                                       {"jid": msg.sender_full})
+                                       {"jid": msg.sender})
             if rows:
                 src = rows[0]['station']
             else:

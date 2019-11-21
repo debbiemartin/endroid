@@ -13,7 +13,7 @@ if [ -z "$ENDROID_PLUGINS" ]; then
     ENDROID_PLUGINS="${HOME}/.endroid/plugins"
 fi
 
-export PYTHONPATH="${ENDROID}/lib/wokkel-0.7.1-py2.7.egg":"${ENDROID}/src/":"${ENDROID_PLUGINS}":"${PYTHONPATH}" 
+export PYTHONPATH="${ENDROID}/src/":"${ENDROID_PLUGINS}":"${PYTHONPATH}" 
 echo "Setting PYTHONPATH=${PYTHONPATH}"
 ENDROID_VERSION_INFO="${ENDROID}/src/endroid/version_info.py"
 # Generate the version information for debugging purposes

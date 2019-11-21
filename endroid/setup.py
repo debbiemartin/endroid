@@ -25,7 +25,7 @@ if version is None:
 else:
     setup(name='endroid',
           version=version,
-          description='EnDroid: a modular XMPP bot',
+          description='EnDroid: a modular Webex bot',
           url='http://open.ensoft.co.uk/EnDroid',
           packages=[
               'endroid',
@@ -34,5 +34,5 @@ else:
               'endroid.plugins.sms',
           ],
           package_dir={'endroid': 'src/endroid'},
-          requires=['treq', 'wokkel', 'twisted']
+          requires=['treq', 'twisted', 'webexteamssdk', 'autobahn']
           )

@@ -1,5 +1,5 @@
 # -----------------------------------------
-# Endroid - XMPP Bot
+# Endroid - Webex Bot
 # Copyright 2012, Ensoft Ltd.
 # Created by Jonathan Millican
 # -----------------------------------------
@@ -13,15 +13,11 @@ import argparse
 from twisted.application import service
 from twisted.internet import reactor
 from twisted.internet.defer import Deferred, DeferredList, inlineCallbacks
-from twisted.words.protocols.jabber.jid import JID
 from twisted.python import log  # used for xml logging
 
-import wokkel.ping
-import wokkel.client
-
 # endroid base layer
-from endroid.rosterhandler import RosterHandler
-from endroid.wokkelhandler import WokkelHandler
+from endroid.webexhandler import WebexHandler
+from endroid.webex_client import WebexClient
 # top layer
 from endroid.usermanagement import UserManagement
 from endroid.messagehandler import MessageHandler
@@ -71,11 +67,8 @@ class Endroid(object):
                                 datefmt=LOGGING_DATE_FORMAT)
             logging.info("Logging to STDOUT")
 
-        self.jid = self.conf.get("setup", "jid")
-        logging.info("Found JID: " + self.jid)
-
-        self.secret = self.conf.get("setup", "password")
-        logging.info("Found Secret: **********")
+        self.authorization = self.conf.get("setup", "authorization")
+        logging.info("Found Authorization token: " + self.authorization)
 
         rooms = self.conf.get("setup", "rooms", default=[])
         for room in rooms:
@@ -94,47 +87,21 @@ class Endroid(object):
         logging.info("Using " + dbfile + " as database file")
         Database.setFile(dbfile)
 
-        self.client = wokkel.client.XMPPClient(JID(self.jid), self.secret)
-        logging.info("Setting traffic logging to " + str(args.logtraffic))
-        self.client.logTraffic = args.logtraffic
+        self.client = WebexClient(self.authorization) 
 
-        self.client.setServiceParent(self.application)
+        self.webexhandler = WebexHandler()
 
-        self.rosterhandler = RosterHandler()
-        self.rosterhandler.setHandlerParent(self.client)
+        self.webexhandler.setHandlerParent(self.client)
+        self.client.set_callbacks(connected=self.webexhandler.connected,
+                                  on_message=self.webexhandler.onMessage,
+                                  on_membership=self.webexhandler.onMembership) 
 
-        self.wokkelhandler = WokkelHandler()
-        self.wokkelhandler.setHandlerParent(self.client)
+        self.usermanagement = UserManagement(self.webexhandler,
+                                             self.conf)
 
-        # Some servers require that we respond to pings so add a ping handler
-        self.ping_handler = wokkel.ping.PingHandler()
-        self.ping_handler.setHandlerParent(self.client)
-
-        self.ping_sender = wokkel.ping.PingClientProtocol()
-        self.ping_sender.setHandlerParent(self.client)
-
-        self.usermanagement = UserManagement(self.wokkelhandler,
-                                             self.rosterhandler,
-                                             self.conf,
-                                             self.ping_sender)
-        self.messagehandler = MessageHandler(self.wokkelhandler,
+        self.messagehandler = MessageHandler(self.webexhandler,
                                              self.usermanagement,
                                              config=self.conf)
-
-        # Fire off our startup flow (once the reactor is running)
-        reactor.callWhenRunning(self.startup_flow)
-
-    @inlineCallbacks
-    def startup_flow(self):
-        # Start the client!
-        self.client.startService()
-
-        # wait for the wokkelhandler and rosterhandler to connect
-        whd = Deferred()
-        rhd = Deferred()
-        self.wokkelhandler.set_connected_handler(whd)
-        self.rosterhandler.set_connected_handler(rhd)
-        yield DeferredList([whd, rhd])
 
     def run(self):
         reactor.run()
@@ -190,7 +157,7 @@ def manhole_setup(argument, config, manhole_dict):
 def main(args):
     parser = argparse.ArgumentParser(
         prog="endroid", epilog="I'm a robot. I'm not a refrigerator.",
-        description="EnDroid: Extensible XMPP Bot")
+        description="EnDroid: Extensible Webex Bot")
     parser.add_argument("-c", "--config", default="",
                         help="Configuration file to use.")
     parser.add_argument("-l", "--level", type=int, default=logging.INFO,

@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Endroid - XMPP Bot - Spell plugin
+# Endroid - Webex Bot - Spell plugin
 # Copyright 2012, Ensoft Ltd.
 # Created by Martin Morrison
 # -----------------------------------------------------------------------------

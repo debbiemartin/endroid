@@ -30,7 +30,7 @@ PHONE_REGEX = re.compile(r"[0-9]{11}|\+[0-9]{11}|\+[0-9]{12}|\+[0-9]{13}")
 
 
 class SMS(CommandPlugin):
-    """Sends SMS messages to users; exposes relevant functions in XMPP."""
+    """Sends SMS messages to users; exposes relevant functions in Webex."""
 
     class UserNotFoundError(Exception):
         """When we try to get the number of a user who hasn't given Endroid a number."""

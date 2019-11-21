@@ -1,5 +1,5 @@
 # -----------------------------------------
-# Endroid - XMPP Bot
+# Endroid - Webex Bot
 # Copyright 2012, Ensoft Ltd.
 # Created by Jonathan Millican
 # -----------------------------------------
@@ -8,8 +8,6 @@ import logging
 from collections import namedtuple
 
 import twisted.internet.reactor as reactor
-from twisted.words.protocols.jabber.jid import JID
-
 
 class Handler(object):
     __slots__ = ("name", "priority", "callback")
@@ -32,7 +30,7 @@ ResponseCallback = namedtuple('ResponseCallback', ['callback',
 
 
 class MessageHandler(object):
-    """An abstraction of XMPP's message protocols."""
+    """An abstraction of Webex's message protocols."""
 
     PRIORITY_NORMAL = Priority.NORMAL
     PRIORITY_URGENT = Priority.URGENT
@@ -46,8 +44,8 @@ class MessageHandler(object):
         self.wh = wh
         self.um = um
         # wh translates messages and gives them to us, needs to know who we are
-        self.wh.set_message_handler(self)
         self._handlers = {}
+        self.wh.set_message_handler(self)
         self.response_callbacks = {}
 
         if config is not None:
@@ -62,7 +60,7 @@ class MessageHandler(object):
         """
         Create context-awareness by giving a callback to handle the user's next message.
         Raises self.ValueError if timeout_time is not a positive time or None.
-        :param user: JID of the user whose next message we handle differently
+        :param user: Email address of the user whose next message we handle differently
         :param callback: callback to handle the message, taking <msg> a Message
         :param noresponse_callback: callback if the message goes unhandled, taking <user>
         :param timeout_time: time in seconds before we forget about this callback.
@@ -93,7 +91,7 @@ class MessageHandler(object):
     def _handle_context_timeout(self, user, noresponse_callback):
         """
         Make Endroid forget about context callbacks for the user.
-        :param user: JID of the user we're forgetting about
+        :param user: the user we're forgetting about
         :param message: chat message to send to the user.
         :param noresponse_callback: callback to call afterwards,
           taking one User argument
@@ -107,7 +105,7 @@ class MessageHandler(object):
         """
         Internal function: runs callbacks for the sender of the msg object.
 
-        :param msg: message object with a .sender JID whose callbacks we run
+        :param msg: message object with a .sender username whose callbacks we run
         """
         if msg.sender in self.response_callbacks:
             msg.start_context_processing()
@@ -138,6 +136,7 @@ class MessageHandler(object):
         sent from user or room 'name'.
 
         """
+        logging.info("Registering callback: %s", name)
         # self._handlers is a dictionary of form:
         # { type : { category : { room/groupname : [Handler objects]}}}
         typhndlrs = self._handlers.setdefault(typ, {})
@@ -154,9 +153,6 @@ class MessageHandler(object):
     def _get_handlers(self, typ, cat, name):
         dct = self._handlers.get(typ, {}).get(cat, {})
         if typ == 'chat':  # we need to lookup name's groups
-            # we may have either a full jid or just a userhost,
-            # groups are referenced by userhost
-            name = self.um.get_userhost(name)
             handlers = []
             for name in self.um.get_groups(name):
                 handlers.extend(dct.get(name, []))
@@ -172,20 +168,19 @@ class MessageHandler(object):
         if msg.place == "muc":
             # get the handlers active in the room - note that these are already
             # sorted (sorting is done in the register_callback method)
-            handlers = self._get_handlers(msg.place, cat, msg.recipient)
+            handlers = self._get_handlers(msg.place, cat, msg.recipient) 
             filters = self._get_filters(msg.place, cat, msg.recipient)
         else:
             # combine the handlers from each group the user is registered with
             # note that if the same plugin is registered for more than one of
             # the user's groups, the plugin's instance in each group will be
             # called
-            handlers = self._get_handlers(msg.place, cat, msg.sender)
+            handlers = self._get_handlers(msg.place, cat, msg.sender) 
             filters = self._get_filters(msg.place, cat, msg.sender)
 
         log_list = []
         if handlers and all(f.callback(msg) for f in filters):
             msg.set_unhandled_cb(failback)
-
             for i in handlers:
                 msg.inc_handlers()
 
@@ -276,15 +271,19 @@ class MessageHandler(object):
 
         """
         # Verify this is a room EnDroid knows about
-        msg = Message('muc', source, body, self, recipient=room)
+
+        if source is None:
+            source = self.wh.my_emails[0]
+
+        msg = Message('muc', source, body, self, recipient=room) 
         # when sending messages we check the filters registered with the
         # _recipient_. Cf. when we receive messages we check filters registered
         # with the _sender_.
         filters = self._get_filters('muc', 'send', msg.recipient)
 
         if all(f.callback(msg) for f in filters):
-            logging.info("Sending message to {}".format(room))
-            self.wh.groupChat(JID(room), body)
+            logging.info("Sending message to room {}".format(room)) 
+            self.wh.groupChat(room, body)
         else:
             # Need to rely on filters providing more detailed information
             # on why a message was filtered
@@ -304,13 +303,16 @@ class MessageHandler(object):
         only the final send_chat's callback will be called.)
         This callback must take one argument (a Message object).
         no_response_cb is an optional callback to be called if the user does
-        not give a response in <timeout> seconds. It takes only a <sender> JID
+        not give a response in <timeout> seconds. It takes only a <sender> user
         string. <timeout> defaults to config option context_response_timeout.
         Either response_cb or no_response_cb can be provided without the other.
         If response_cb is not specified but no_response_cb is, Endroid
         effectively waits for the timeout to elapse; if the user didn't reply
         in that time, it calls no_response_cb.
         """
+
+        if source is None:
+            source = self.wh.my_emails[0]
 
         # Verify user is known to EnDroid
         msg = Message('chat', source, body, self, recipient=user)
@@ -324,14 +326,14 @@ class MessageHandler(object):
 
         if all(f.callback(msg) for f in filters):
             logging.info("Sending message to {}".format(user))
-            self.wh.chat(JID(user), body)
+            self.wh.chat(user, body) 
         else:
             # Need to rely on filters providing more detailed information
             # on why a message was filtered
             logging.debug("Filtered out message to {0}".format(user))
 
 
-class PluginMessageHandler(object):
+class PluginMessageHandler(object): 
     """
     One of these exists per plugin, providing the API to handle messsages.
     """
@@ -343,18 +345,18 @@ class PluginMessageHandler(object):
     def send_muc(self, body, source=None, priority=Priority.NORMAL):
         if self._pluginmanager.place != "room":
             raise ValueError("Not in a room")
-        self._messagehandler.send_muc(self._pluginmanager.name, body,
+        self._messagehandler.send_muc(self._pluginmanager.name, body, 
                                       source=source, priority=priority)
 
-    def send_chat(self, user, body, source=None, priority=Priority.NORMAL):
+    def send_chat(self, user, body, source=None, priority=Priority.NORMAL): 
         if self._pluginmanager.place != "group":
             raise ValueError("Not in a group")
         if user not in self._pluginmanager.usermanagement.users(
                                                     self._pluginmanager.name):
             raise ValueError("Target user is not in this group")
         # Verify user is in the group we are in
-        self._messagehandler.send_chat(user, body,
-                                       source=source, priority=priority)
+        self._messagehandler.send_chat(user, body, source=source, 
+                                       priority=priority)
 
     def register(self, callback, priority=Priority.NORMAL, muc_only=False,
                  chat_only=False, include_self=False, unhandled=False,
@@ -372,7 +374,7 @@ class PluginMessageHandler(object):
                                       recv_filter=recv_filter)
 
 
-class Message(object):
+class Message(object): 
 
     # Private variables:
     # - _context_response - whether or not this message is in response to a
@@ -382,18 +384,13 @@ class Message(object):
     #   context callbacks; False if no context callback handled it despite being
     #   called; True if a context callback handled it."""
 
-    def __init__(self, place, sender, body, messagehandler, recipient, handlers=0,
-                 priority=Priority.NORMAL, context_response=False):
+    def __init__(self, place, sender, body, messagehandler, recipient,
+                 handlers=0, priority=Priority.NORMAL, context_response=False):
         self.place = place
 
-        # sender_full is a string representing the full jid (including resource)
-        # of the message's sender. Used in reply methods so that if a user is
-        # logged in on several resources, the reply will be sent to the right
-        # one
-        self.sender_full = sender
-        # a string representing the userhost of the message's sender. Used to
-        # lookup resource-independant user properties eg their registered rooms
-        self.sender = messagehandler.um.get_userhost(sender)
+        # Sender is a user string, and recipient is either a user string or 
+        # a room ID
+        self.sender = sender
         self.body = body
         self.recipient = recipient
 
@@ -408,19 +405,24 @@ class Message(object):
 
     def send(self):
         if self.place == "chat":
-            self._messagehandler.send_chat(self.recipient, self.body, self.sender)
+            self._messagehandler.send_chat(self.recipient, self.body, 
+                                           self.sender)
         elif self.place == "muc":
-            self._messagehandler.send_muc(self.recipient, self.body, self.sender)
+            self._messagehandler.send_muc(self.recipient, self.body, 
+                                          self.sender)
 
     def reply(self, body):
         if self.place == "chat":
-            self._messagehandler.send_chat(self.sender_full, body, self.recipient)
+            self._messagehandler.send_chat(self.sender, body, self.recipient)
         elif self.place == "muc":
             # we send to the room (the recipient), not the message's sender
-            self._messagehandler.send_muc(self.recipient, body, self.recipient)
+            self._messagehandler.send_muc(self.recipient, body)
 
     def reply_to_sender(self, body):
-        self._messagehandler.send_chat(self.sender_full, body, self.recipient)
+        if self.place == "chat":
+            self._messagehandler.send_chat(self.sender, body, self.recipient)
+        elif self.place == "muc":
+            self._messagehandler.send_chat(self.sender, body) 
 
     def inc_handlers(self):
         self.__handlers += 1

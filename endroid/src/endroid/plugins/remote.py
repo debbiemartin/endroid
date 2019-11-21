@@ -128,16 +128,13 @@ class RemoteNotification(Plugin):
 
         self.sms = self.get('endroid.plugins.sms')
 
-        self.reliable_send = self.get('endroid.plugins.reliablesend')
-
         self.keys = DatabaseDict(Database(DB_NAME), DB_TABLE, "users", "keys")
 
     def help(self):
         return HELP_MESSAGE
 
     dependencies = ['endroid.plugins.command',
-                    'endroid.plugins.httpinterface',
-                    'endroid.plugins.reliablesend']
+                    'endroid.plugins.httpinterface']
 
     preferences = ['endroid.plugins.sms']
 
@@ -255,17 +252,18 @@ class RemoteNotification(Plugin):
                 msg = "Remote notification received: {}".format(msg)
 
                 if self.sms.number_known(user) and urgent:
-                    # If the user is online XMPP the message and get an ack
+                    # If the user is online Webex the message and get an ack
                     # otherwise try SMS
                     if self.rosters.is_online(user):
                         self.wait_for_ack(user, msg)
                     else:
                         def sms_failed(failure):
-                            self.reliable_send.send_reliably(
-                                sender=user, 
-                                message_text="I tried to send this by SMS "
-                                "but that failed: \n{}".format(msg), 
-                                recipient=user)
+                            self.messagehandler.send_chat(
+                                user=user, source=user, 
+                                body=msg + '\n\nPlease acknowledge by replying to this.',
+                                response_cb=ack, 
+                                no_response_cb=no_ack,
+                                timeout=30)
                         self.send_sms(user, msg, on_error=sms_failed)
                 else:
                     if urgent and not self.sms.number_known(user):
@@ -273,9 +271,8 @@ class RemoteNotification(Plugin):
                                "your number: {}".format(msg))
                     # Don't try SMS (we don't know the number or the ugent 
                     # isn't true) just reliably send the msg
-                    self.reliable_send.send_reliably(sender=user,
-                                                     message_text=msg,
-                                                     recipient=user)
+                    self.messagehandler.send_chat(user=user, source=user, 
+                                                  body=msg)
 
                 header_msg = "<strong>Message delivered to {}</strong> <br />".format(user)
 

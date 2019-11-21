@@ -1,5 +1,5 @@
 # -----------------------------------------
-# Endroid - XMPP Bot
+# Endroid - Webex Bot
 # Copyright 2012, Ensoft Ltd.
 # Created by Jonathan Millican
 # -----------------------------------------
