@@ -1,0 +1,139 @@
+endroid (1.4.9) xenial; urgency=medium
+
+  * Change start up mechanism from upstart to Systemd 
+
+ -- Tomas Hyland <tohyland@ensoft-linux3.cisco.com>  Mon, 21 May 2018 16:29:15 +0100
+
+endroid (1.4.8) trusty; urgency=medium
+
+  * Fix bug in DB update function
+  * Improve exception logging
+  * Add makedeb script to make it easier to build and install debs
+  * Remove need for manual service restart when upgrading
+  * Only list rooms that a user is allowed in
+  * Fix various bugs in plugins 
+  * Fix up lintian errors/warnings
+
+ -- Chris Davidson <chdavids@ensoft-sandbox.cisco.com>  Thu, 14 Jan 2016 16:16:42 +0000
+
+endroid (1.4.7) trusty; urgency=low
+
+  * Enhance the ldapauth plugin to support LDAP directories that do not
+    allow anonymous access.
+  * Enable twisted logging if traffic logging requested.
+
+ -- Matthew Hall <launchpad@matthall.co.uk>  Mon, 04 Jan 2016 14:03:48 +0000
+
+endroid (1.4.6) trusty; urgency=medium
+
+  * Bugfixes and robustness improvements for periodic pinger.
+  * When started as a debian service, log twisted messages to the endroid
+    logfile.
+
+ -- Phil Connell <phil.connell@ensoft.co.uk>  Tue, 14 Oct 2014 13:33:00 +0100
+
+endroid (1.4.5) trusty; urgency=medium
+
+  * Fix endroid_remote watch.
+
+ -- Phil Connell <phil.connell@ensoft.co.uk>  Fri, 10 Oct 2014 12:18:00 +0100
+
+endroid (1.4.4) trusty; urgency=medium
+
+  * Fix MUC behaviour for servers that do not allow nickname changes
+  * Allow Endroid to respond to invitations to (re)join known rooms
+  * Periodicpinger plugin: Ping servers rather than selected clients
+
+ -- Paul Stanley <pastanle@ensoft-linux3.cisco.com>  Fri, 03 Oct 2014 11:12:57 +0100
+
+endroid (1.4.3) trusty; urgency=medium
+
+  * Add ability for python version to be specified 
+
+ -- Chris Davidson <chdavids@ensoft-sandbox.cisco.com>  Thu, 18 Sep 2014 16:59:29 +0100
+
+endroid (1.4.2) trusty; urgency=medium
+
+  * SMS plugin: Fix bugs in its periodic accounting
+  * SMS plugin: Fix bugs in its error handling
+  * Periodicpinger plugin: Reducing logging spam
+  * Rename SMS block commands
+  * Make endroid_remote usable as a library
+  * Other minor cleanup (e.g. the example config file) 
+
+ -- Chris Davidson <chdavids@ensoft-sandbox.cisco.com>  Mon, 15 Sep 2014 15:05:57 +0100
+
+endroid (1.4.1) precise; urgency=low
+
+  * Productisation fixes for SMS plugin: periodic quotas, ACLs.
+  * Update endroid remote to not use SMS by default (requires -u 'urgent' flag)
+  * Add periodicpinger plugin to periodically send c2c pings to a selection of
+    users. Designed primarily to help keep flaky s2s connections alive.
+
+ -- Phil Connell <phconnel@ensoft-sandbox.cisco.com>  Fri, 05 Sep 2014 16:40:12 +0100
+
+endroid (1.4.0) precise; urgency=low
+
+  * Add user presence callback API for plugins.
+  * Add context-awareness callbacks (response/no response) to message send
+    API.
+  * Add SMS plugin.
+  * Add reliable send plugin.
+  * Enhance endroid remote plugin to use SMS and reliable send.
+  * Handle s2c XMPP pings.
+  * Add a few small plugins making basic uses of the new plugin APIs.
+
+ -- Phil Connell <phil.connell@ensoft.co.uk>  Fri, 22 Aug 2014 08:45:53 +0100
+
+endroid (1.3) precise; urgency=low
+
+  * Only update a MUCs affiliation list if the MUC supports the member-only
+    config item.
+  * Significant enhancements to web interface (authentication, jinja support).
+  * Make invite resource aware, so it will invite a user if the invite request
+    is from a different resource.
+  * Clean up the room join handling to not leak errbacks off the end of the
+    deferred chains in the case of failure.
+  * Modify endroid-remote to return an error if the user is offline.
+
+ -- Julian Priestley <julian.priestley@ensoft.co.uk>  Thu, 12 Jun 2014 11:00:00 +0100
+
+endroid (1.2) lucid; urgency=low
+
+  * Stability improvements
+  * Added roomowner plugin allowing EnDroid to own and admin rooms
+  * New wiki Docs
+  * Expanded config syntax (note this won't work with old config files)
+  * Few new plugins: invite, compute and remote
+  * Many other minor fixes
+
+ -- Martin Morrison <martin.morrison@ensoft.co.uk>  Wed, 14 Aug 2013 13:00:00 +0100
+
+endroid (1.1.2) lucid; urgency=low
+
+  * Fixed reconnection and room rejoining on network failures
+  * Fixed correct plugin to not accidentally trigger on, e.g. "serene"
+
+ -- Martin Morrison <martin.morrison@ensoft.co.uk>  Tue, 04 Sep 2012 13:00:00 +0100
+
+endroid (1.1.1) lucid; urgency=low
+
+  * Improved build system (to support multiple Python versions)
+  * Improvements to plugin APIs - especially for command-based plugins, and help
+
+ -- Martin Morrison <martin.morrison@ensoft.co.uk>  Fri, 02 Sep 2012 22:00:00 +0100
+
+endroid (1.1) lucid; urgency=low
+
+  * Enhanced Help system
+  * Enhanced configuration file location options
+  * Improved code readability in many cases
+  * Several new plugins - including a rate limiter
+
+ -- Martin Morrison <martin.morrison@ensoft.co.uk>  Fri, 31 Aug 2012 20:00:00 +0100
+
+endroid (1.0) lucid; urgency=low
+
+  * Initial version
+
+ -- Jonathan Millican <jonathanrm@ensoft.co.uk>  Wed, 01 Aug 2012 12:00:00 +0100

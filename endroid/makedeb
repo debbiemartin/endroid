@@ -1,0 +1,52 @@
+#!/bin/bash -e
+
+#
+# This script uses Debhelper to build the endroid Debian package and 
+# optionally install it
+#
+
+# Find the location of this script
+CURRENT_LOCATION="$( cd $( dirname "$0" ) && pwd )"
+
+#
+# Generate the version info
+#
+${CURRENT_LOCATION}/gen_version.sh
+
+#
+# Work out what the resulting deb file will be called
+# Why doesn't debuild just have an output argument!!!
+#
+ENDROID_VERSION=`dpkg-parsechangelog --show-field Version`
+ENDROID_DEB_FILE="endroid_${ENDROID_VERSION}_all.deb"
+ENDROID_DEB="../${ENDROID_DEB_FILE}"
+
+# Delete the file if it exists
+stat ${ENDROID_DEB} || true
+rm ${ENDROID_DEB} || true
+
+# Call debuild with the following options:
+#  -uc -us : Don't attempt to sign anything
+#  -tc     : Clean the source tree after building
+#  -I      : Exclude undesired files/dirs from the package (e.g. CVS control
+#            files, backup files)
+#
+# During development it can be useful to run this command without the -tc
+# option, allowing inspection of the build directory contents.
+debuild -uc -us -tc -I
+
+#
+# Now install the deb if that has been requested
+#
+if [[ $# -ge 1 && "$1" == "install" ]] ; then
+    if [[ -e ${ENDROID_DEB} ]] ; then
+        # Go ahead and install it
+        echo "Installing ${ENDROID_DEB}"
+        stat ${ENDROID_DEB}
+        dpkg -i ${ENDROID_DEB}
+    else
+        echo "${ENDROID_DEB} doesn't appear to exist - aborting install"
+        exit 2
+    fi
+fi
+

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>EnDroid</title>
+  </head>
+  <body bgcolor="white">
+    <h1>EnDroid web interface</h1>
+    <img style='float: right' src='_media/EnDroid.png'>
+    {% if plugins %}
+    <p>The following plugins have resources registered:</p>
+    <ul>
+      {% for plugin in plugins %}
+      <li><a href='{{plugin}}/'>{{plugin}}</a></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p>No loaded plugins have web interfaces.</p>
+    {% endif %}
+  </body>
+</html>

@@ -1,0 +1,14 @@
+Source: endroid
+Maintainer: Martin Morrison <martin.morrison@ensoft.co.uk>
+Section: misc
+Priority: optional
+Build-Depends: debhelper (>= 9),python,python-setuptools
+Standards-Version: 3.9.5
+
+Package: endroid
+Architecture: all
+Depends: python,python-tz,python-twisted,python-wokkel,python-dateutil,python-jinja2,${misc:Depends}
+Suggests: fortune,python-ldaptor
+Description: XMPP bot framework
+ EnDroid is a framework for building bots in XMPP. Its architecture
+ is based around plugins, in order to make it as extensibile as possible.

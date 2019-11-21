@@ -1,0 +1,53 @@
+#!/usr/bin/python
+#
+# Decrypt hi5s
+#
+# This is all a last-resort mechanism (the whole point of hi5s is that they're
+# anonymous). The EnDroid database (eg /var/lib/endroid/endroid.db) is the only
+# required command-line parameter.
+#
+# Copyright (C) Ensoft 2013
+# Created by SimonC
+
+import argparse, sqlite3
+from getpass import getpass
+from subprocess import Popen, PIPE
+
+HI5_DB = 'hi5_hi5s'
+
+def set_params():
+    """
+    Set all parameters
+    """
+    parser = argparse.ArgumentParser(description=
+                                     'Spelunk encrypted high five messages')
+    parser.add_argument('--keyring', help='gpg secret keyring')
+    parser.add_argument('db_file', help='path to endroid.db')
+    args = parser.parse_args()
+    args.passphrase = getpass('Enter passphrase: ')
+    return args
+
+def main():
+    args = set_params()    
+    conn = sqlite3.connect(args.db_file)
+    cur = conn.cursor()
+    cur.execute('select * from ' + HI5_DB)
+    for row in cur.fetchall():
+        gpg_args = ['gpg', '--decrypt', '--armor', '--passphrase-fd', '0',
+                    '--batch', '--quiet']
+        if args.keyring:
+            gpg_args.extend(('--secret-keyring', args.keyring))
+        p = Popen(gpg_args, stdin=PIPE, stdout=PIPE)
+        p.stdin.write(args.passphrase + '\n')
+        out, err = p.communicate(row[-1])
+        p.wait()
+        if err:
+            print '!! ERROR:', err
+        elif p.returncode != 0:
+            # No encrypted data, so display what we have
+            print '{}: {}'.format(row[2], row[1])
+        else:
+            print out
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,10 @@
+etc/endroid.conf etc/endroid/
+etc/endroid.conf usr/share/doc/endroid/examples/
+etc/init/endroid.service etc/systemd/system/
+bin/endroid usr/bin/
+bin/endroid_remote usr/bin/
+bin/spelunk_hi5s usr/sbin/
+lib/wokkel-0.7.1-py2.7.egg usr/lib/endroid/dependencies
+doc/EnDroid.png usr/share/endroid/media/
+resources/httpinterface/index.html usr/share/endroid/templates/httpinterface/
+resources/httpinterface/notfound.html usr/share/endroid/templates/httpinterface/

@@ -1,0 +1,11 @@
+#! /bin/sh -e
+
+if which service >/dev/null 2>&1; then
+    service endroid restart
+elif which invoke-rc.d >/dev/null 2>&1; then
+    invoke-rc.d endroid restart
+else
+    /etc/init.d/endroid restart
+fi
+
+#DEBHELPER#

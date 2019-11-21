@@ -1,0 +1,790 @@
+#acl EnsoftLander:read,write,delete,revert,admin All:read
+
+<<TableOfContents>>
+
+= Introduction =
+
+Over the course of this tutorial we will write a plugin for !EnDroid which plays a simple pass-the-bomb game over chat.
+
+A user should be able to create a bomb with a specified timer, then throw it to another user. The recipient should then be able to continue the process.
+
+When the timer expires the bomb should 'kill' its holder and award a kill to whoever lit the fuse.
+
+This plugin is command orientated - that is we will be using it in chat by typing commands to !EnDroid e.g. `bomb 15` to create a bomb with a 15 second timer. This suggests we use the Command plugin
+which simplifies this type of interaction.
+
+Links to the relevant sections of the !Reference page are at the bottom of each section of this tutorial.
+
+== Preface: Laying the ground work ==
+
+=== Getting EnDroid ===
+
+See: [[../GettingStarted#Installation|EnDroid installation]] for instructions on getting and setting up !EnDroid.
+
+We will be creating a plugin at `~/.endroid/plugins/passthebomb.py`. To get !EnDroid to load the plugin, make sure you have:
+
+{{{
+[room | group : * ]
+plugins = passthebomb,
+          endroid.plugins.command,
+# all the other plugins you want
+}}}
+
+See [[../Configuration|EnDroid configuration]] for more details on the config file.
+
+=== Debugging ===
+
+It is fairly probably that at some stage something will go wrong. For information about debugging problems, see: [[../Debugging|EnDroid debugging]].
+
+== A Plot: CommandPlugin ==
+
+Firstly we will get things set up so that our plugin responds to the keywords 'bomb', 'throw' and 'kills'.
+
+{{{#!highlight python
+from endroid.plugins.command import CommandPlugin
+
+class PassTheBomb(CommandPlugin):
+    # The help attribute will be displayed when 'help passthebomb' is 
+    # run provided that the help plugin is enabled.
+    help = "Pass the bomb game for EnDroid"
+
+    def cmd_bomb(self, msg, arg):
+        # Create a new bomb.
+        msg.reply("Made a new bomb with arguments '{}'".format(arg))
+
+    def cmd_throw(self, msg, arg):
+        # Throw the bomb to another person (or ourself if we fancy).
+        msg.reply("Throwing a bomb with arguments '{}'".format(arg))
+
+    def cmd_kills(self, msg, arg):
+        # How many kills do we have?
+        msg.reply("Getting killcount with arguments '{}'".format(arg))
+}}}
+
+The inheritance from `CommandPlugin` means that all methods beginning with `cmd_` are automagically registered e.g. `cmd_bomb` will be called when someone types `"bomb and then whatever else they
+want"`.
+
+Every `cmd_` function take two arguments: 
+ * msg - the Message object that triggered the call 
+ * arg - msg.body minus the first word (the name part of the cmd_<name> function)
+
+As it stands the plugin will do little except for reply to messages starting with the word 'bomb', 'throw' or 'kills' - but demonstrates simple response to commands.
+
+=== Aside: Plugin and CommandPlugin ===
+
+The general class that plugins inherit from is, unsurprisingly, `endroid.pluginmanager.Plugin` (either directly or via a subclass such as `CommandPlugin`). The `Plugin` class has access to
+`MessageHandler` and `UserManagement` objects via the `messagehandler` and `usermanagement` attributes. These objects provide access to functionality concerned with X'''MP'''P's '''m'''essaging and
+'''p'''resence facilities respectively.
+
+Additionally the `Plugin` class has methods by which a plugin can register a function with `messagehandler` such that the function will be called every time a specified type message is received, with
+the message as its argument. The primary such functions are:
+ * `register_muc_callback(<callable>)`
+ * `register_chat_callback(<callable>)`
+
+A simple example plugin:
+{{{#!highlight python
+from endroid.pluginmanager import Plugin
+
+class JFSullivan(Plugin):
+    def endroid_init(self):
+        self.register_chat_callback(self.do_harass)
+        self.register_muc_callback(self.do_harass)
+    
+    def do_harass(self, msg):
+        msg.reply("Purchase one of my fine umbrellas!")
+}}}
+This plugin registers for both muc and chat callbacks, so it's function is called whenever !EnDroid receives a muc or a chat message.
+
+`CommandPlugin` (`endroid.plugins.command.CommandPlugin`) inherits from `Plugin` and provides some helper features. It will automatically register class methods beginning with `cmd_`. It also provides
+extra options such as synonyms, registering for muc or chat only and providing help messages (via the `help` plugin). For these extras it looks for attributes on methods, e.g.:
+
+{{{#!highlight python
+from endroid.plugins.command import CommandPlugin
+
+class Umbrella(CommandPlugin):
+    def cmd_buy(self, msg, arg):
+        msg.reply("It will cost one thousand guineas")
+    cmd_buy.helphint = "When buying an umbrella, I recommend sheet steel"
+    cmd_buy.muc_only = True  # Can only be called from a group chat.
+    # cmd_buy.chat_only = True  # Can only be called from a single-user chat.
+    # messages starting with buy, purchase or acquire will call this function.
+    cmd_buy.synonyms = ("purchase", "acquire") 
+}}}
+
+  '''Note:''' A function registered with the Plugin class's `register` methods will be called with a __single__ argument - the message that caused it to be called. A `cmd_` function in a
+`CommandPlugin` derived class will be called with __two__ arguments: the message that caused it to be called, and the message's body stripped of the first word (which, as mentioned above, will have
+been the name of the function minus the `cmd_`.
+
+
+Full reference for `Plugin`: 
+ * [[../Reference#Plugin|EnDroid reference: plugin]]
+
+== Lighting the Fuse: Cron, Messagehandler ==
+
+Back to the Bomb plugin. We have got the plugin responding to commands but now we want to actually arm the bomb.
+
+`Cron` is !EnDroid's event scheduler. It provides methods to schedule future events, and allows persistency - i.e. events that will be remembered should !EnDroid undergo a restart. We will use it
+explode our bombs at suitable (or unsuitable, depending on who is holding the bomb) times. The `Cron` singleton object is accessible via `self.cron`.
+
+The scheduling of functions with `Cron` is a two stage process. Firstly we register a callable with `Cron` against a registration string: `register(callable, registration_name)`. Once this is done, we
+can use either `setTimeout(time, registration_name, parameters)` or `doAtTime(time, locality, registration_name, parameters)` to tell `Cron` to call the function at some point in the future
+(localities are as used by `pytz.timezone`).
+
+  '''Note:''' Registration names must be __globally__ unique (across all plugins), this is the purpose of the `get_id` function in the code below.
+
+{{{#!highlight python
+from endroid.cron import Cron
+
+class Bomb(object):
+    ID = 0
+    def __init__(self, source, fuse, plugin):
+        self.source = source  # The user who lit the fuse.
+        self.user = source  # Our current bearer.
+        self.plugin = plugin  # Plugin instance we belong to.
+        self.history = set()  # All our bearers.
+
+        idstring = self.get_id()  # Get a unique registration_name.
+        plugin.cron.register(self.explode, idstring)
+        # Schedule detonation with parameters = None.
+        plugin.cron.setTimeout(fuse, idstring, None)  
+
+    # This function is called by Cron and given an argument. We don't need an 
+    # argument so just ignore it.
+    def explode(self, _):
+        # Last argument of send_chat is the new message's source which defaults
+        # to None and is non-essential (it is used by the Message.reply methods
+        # and is visible to filters but neither of these are important to us).
+        self.plugin.messagehandler.send_chat(self.user, "BOOM!", None)
+
+    @classmethod
+    def get_id(cls):
+        # Generate a unique id string to register our explode method against.
+        result = Bomb.ID
+        cls.ID += 1
+        return "bomb" + str(result)
+
+
+class PassTheBomb(CommandPlugin):
+    ...
+    def cmd_bomb(self, msg, arg):
+        holder = msg.sender
+        try:
+            # Read a time from the first word of arg.
+            time = float(arg.split(' ', 1)[0])
+            # A new Bomb with the message sender as the source.
+            Bomb(msg.sender, time, self)
+            msg.reply("Sniggering evilly, you light the fuse...")
+        # Provision for a failure to read a time float.
+        except ValueError:
+            msg.reply("You struggle with the matches")
+}}}
+
+Now we can type `'bomb 5'` into chat and 5 seconds later (or so) it will explode.
+
+We have used the `messagehandler.send_chat` function here as the `Bomb` object has no access to a `Message` object to reply to. We will see the `messagehandler.send_muc` function shortly. The
+`MessageHandler` object is an abstraction of X'''M'''PPs '''messaging''' protocols as well as providing methods to register message callbacks (in our example these are hidden behind `CommandPlugin`)
+and to send messages in single and multi user chats.
+
+Full reference for `Cron`: 
+ * [[../Reference#Cron|EnDroid reference: Cron]]
+Full reference for `MessageHandler`: 
+ * [[../Reference#MessageHandler.2C_Message|EnDroid reference: MessageHandler]]
+
+== Throwing the Bomb: Usermanagement ==
+
+Now we will add the (important) ability to throw the bomb to another user. We will use the `UserManagement` object to check if our target is online.
+
+{{{#!highlight python
+from collections import defaultdict
+
+class Bomb(object):
+    ...
+    def __init__(self, source, fuse, plugin):
+        ...  # As before.
+        # Updating the user will now be controlled by our throw method
+        self.user = None  
+        ...
+
+    def explode(self, _):
+        self.plugin.messagehandler.send_chat(self.user, "BOOM!", self.plugin)
+        self.plugin.bombs[self.user].discard(self)  # This bomb is done
+
+    def throw(self, next_user):
+        # Remove this bomb from our current user.
+        self.plugin.bombs[self.user].discard(self)
+
+        self.history.add(next_user)
+        self.user = next_user
+
+        # Add it to the new user.
+        self.plugin.bombs[self.user].add(self)
+
+
+class PassTheBomb(CommandPlugin):
+    help = ...
+    bombs = defaultdict(set)  # A dictionary of which users have bombs
+
+    ...
+
+    def cmd_bomb(self, msg, arg):
+        holder = msg.sender
+        try:
+            # Read a time from the first word of arg.
+            time = float(arg.split(' ', 1)[0])
+            # A new Bomb with the message sender as the source, passed to 
+            # msg.sender.
+            Bomb(msg.sender, time, self).throw(msg.sender)   
+        ...
+
+    def cmd_throw(self, msg, arg):
+        target = arg.split(' ')[0]
+        # Check if the target is online.
+        if not target in self.usermanagement.get_available_users():
+            msg.reply("You look around but can't spot your target")
+        # Check if we actually have a bomb.
+        elif not self.bombs[msg.sender]:
+            msg.reply("You idly throw your hat, wishing you had something "
+                       "more 'splodey")
+        else:   
+            self.bombs[msg.sender].pop().throw(target)
+            msg.reply("You throw the bomb!")
+            # Let the target know we've thrown the bomb at him!
+            self.messagehandler.send_chat(target, "A bomb lands by your feet!")
+}}}
+
+
+`Usermanagement` is an abstraction of the XM'''P'''Ps '''presence'''  protocols. It provides a number of user management functions including:
+ * `get_[registered|available]_users(name=None)` - returns an iterable of users registered with/available in the room/group name, or in !EnDroid's contact list if name is None (in the code above we
+ * have used the `get_available_users(None)` to find the users online in our contact list)
+ * `get_[?available]_[rooms|groups](user)` - returns an iterable of rooms/groups the specified user is available/registered in.
+
+Now let us add some more interesting explosion reporting, utilising the second of the two above methods.
+
+{{{#!highlight python
+class Bomb(object):
+    ...
+    def explode(self, _):
+        # Some shorthands.
+        get_rooms = self.plugin.usermanagement.get_available_rooms
+        send_muc = self.plugin.messagehandler.send_muc
+        send_chat = self.plugin.messagehandler.send_chat
+
+        msg_explode = "!!!BOOM!!!"
+        msg_farexplode = "You hear a distant boom"
+        msg_kill = "{} was got by the bomb"
+
+        rooms = get_rooms(self.user)
+        for room in rooms:
+            # Let everyone in a room with self.user hear the explosion.
+            send_muc(room, msg_explode, self.plugin)
+            send_muc(room, msg_kill.format(self.user), self.plugin)
+
+        # Alert those who passed the bomb that it has exploded.
+        for user in self.history:
+            if user == self.user:
+                send_chat(self.user, msg_explode, self.plugin)
+                send_chat(self.user, msg_kill.format("You"), self.plugin)
+            else:
+                send_chat(user, msg_farexplode, self.plugin)
+                send_chat(user, msg_kill.format(self.user), self.plugin)
+
+        self.plugin.bombs[self.user].discard(self)
+}}}
+
+We broadcast the explode message in any room the victim is present in (`get_rooms(self.user)`) using `messagehandler`'s send_muc method and alert other users in the bomb's history. We also send a kill
+notice to all users in the history (note that any grammatical imperfections are features, not bugs).
+
+Full reference for `UserManagement`: 
+ * [[../Reference#UserManagement|EnDroid reference: UserManagement]]
+
+=== Aside: Plugin Scoping ===
+
+Note that we have used a class variable to store the dictionary of bombs.
+
+In !EnDroid, a seperate instance of each plugin is instantiated in each room/for each usergroup. This means that if plugins in seperate environments want to share information, they must use class
+variables.
+
+== A Criminal Record: Database ==
+
+`Database` is the second main utility class !EnDroid provides. It wraps an SQL database. We will use it to store kill-counts.
+
+{{{#!highlight python
+from endroid.database import Database
+
+DB_NAME = "PTB"
+DB_TABLE = "PTB"
+
+class Bomb(object):
+    ...
+    def explode(self, _):
+        ...
+        self.plugin.register_kill(self.source)   # Register the kill in the database.
+        self.plugin.bombs[self.user].discard(self)
+
+class PassTheBomb(CommandPlugin):
+    ...
+    def endroid_init(self):
+        # Note that this will either create a new database if none with name 
+        # DB_NAME exists, or open an existing one.
+        self.db = Database(DB_NAME)
+        # If we haven't already setup the database then do so.
+        if not self.db.table_exists(DB_TABLE):
+            # Create a table with fields 'user' and 'kills'.
+            self.db.create_table(DB_TABLE, ("user", "kills"))
+
+    def cmd_kills(self, msg, arg):
+        # Retrieve the users kill count.
+        kills = self.get_kills(msg.sender)
+        # self.place_name is the address of the room or name of the group this 
+        # plugin is active in.
+        nick = self.usermanagement.get_nickname(msg.sender, self.place_name)
+        level = self.get_level(kills)
+
+        text = "{} the {} has {} kill".format(nick, level, kills) 
+        text += ("" if kills == 1 else "s")
+        msg.reply(text)
+
+    def register_kill(self, user):
+        kills = self.get_kills(user)
+        if kills:
+            # Change the value of 'kills' to kills+1 in table rows where the
+            # field 'user' has value user.
+            r = self.db.update(DB_TABLE, {'kills': kills+1}, {'user': user})
+            assert r == 1  #  Exactly 1 row should be updated
+        else:
+            # The user is not registered in the database - so create a new 
+            # registration for them with their first kill stored.
+            self.db.insert(DB_TABLE, {'user': user, 'kills': 1})
+
+    def get_kills(self, user):
+        # Look in DB_TABLE for the 'kills' field in entries whose 'user' field 
+        # is user.
+        # Returns a list of dictionaries, each with keys: _endroid_unique_id 
+        # (always included but which we can ignore) and 'kills' - which we want.
+        results = self.db.fetch(DB_TABLE, ['kills'], {'user': user})
+        if len(results) == 0:  # The user is not registered in the database.
+            return 0
+        else:
+            # Get the first dictionary in results and extract the value of 
+            # 'kills' from it.
+            return results[0]['kills']
+
+    @staticmethod
+    def get_level(kills):
+        if kills < 5:
+            level = 'novice'
+        elif kills < 15:
+            level = 'apprentice'
+        elif kills < 35:
+            level = 'journeyman'
+        elif kills < 65:
+            level = 'expert'
+        elif kills < 100:
+            level = 'master'
+        else:
+            level = 'grand-master'
+        return level
+}}}
+
+We have used the `endroid_init` method, which is called by !EnDroid's plugin management system when a plugin is loaded. Here we use it to set up a database.
+
+The use of the database is fairly straightforward, in general methods take parameters table_name, options_list_or_dict and conditions_dictionary. Their parameters are internally converted into strings
+and passed to an SQL query which does the gruntwork.
+
+So far, we have a fully functional plugin which does everything we set out to do. However there are still a couple of things to be done.
+
+Full reference for `Database`: 
+ * [[../Reference#Database|EnDroid reference: Database]]
+
+== Umbrellas: For when it rains (bombs) ==
+
+There is a problem with the plugin as it stands. If a user does not want to take part in the game (however inconceivable this may seem...) he/she has no options.
+
+We will remedy these problems by giving all users patented JF Sullivan umbrellas, which they can unfurl to protect themselves and furl to join in the game. By default a user's umbrella is unfurled
+(i.e. we operate on an opt-in policy).
+
+When an umbrella is unfurled, the user should not be able to light a new bomb, nor throw an existing bomb, nor have a bomb thrown at them.
+
+Most of the changes made to the code to introduce this feature are just Python, so will not be explained in any detail.
+
+{{{#!highlight python
+from collections import namedtuple
+
+class User(object):
+    # A class to represent a player of the game.
+    __slots__ = ('name', 'kills', 'shield')
+    def __init__(self, name, kills=0, shield=True):
+        self.name = name
+        self.kills = kills
+        self.shield = shield
+
+    def __repr__(self):
+        return "User(name={}, kills={}, shield={})".format(self.name, 
+                                                           self.kills, 
+                                                           self.shield)
+
+...
+
+class PassTheBomb(CommandPlugin):
+    ...
+    users = dict()  # A dictionary of registered game players.
+
+    def endroid_init(self):
+        ...
+            self.db.create_table(DB_TABLE, ('user', 'kills'))
+        else:
+            # Make a local copy of the registration database.
+            data = self.db.fetch(DB_TABLE, ['user', 'kills'])
+            # Data is a list of dictionaries, each one representing a row in 
+            # the database.
+            for dct in data:
+                self.users[dct['user']] = User(dct['user'], dct['kills'])
+
+    def cmd_furl_umbrella(self, msg, arg):
+        """
+        This is how a user enters the game - allows them to be targeted
+        and to create and throw bombs.
+
+        """
+        user = msg.sender
+        if not self.get_shielded(user):
+            msg.reply("Your umbrella is already furled!")
+        else:
+            if self.get_registered(user):
+                self.users[user].shield = False
+            else:  # They are not - register them.
+                self.db.insert(DB_TABLE, {'user': user, 'kills': 0})
+                self.users[user] = User(user, kills=0, shield=False)
+            msg.reply("You furl your umbrella!")
+
+    def cmd_unfurl_umbrella(self, msg, arg):
+        """A user with an unfurled umbrella cannot create or receive bombs"""
+        user = msg.sender
+        if self.get_shielded(user):
+            msg.reply("Your umbrella is already unfurled!")
+        else:
+            # To get user must not have been shielded ie they must have furled
+            # so they will be in the database.
+            self.users[user].shield = True
+            msg.reply("You unfurl your umbrella! No bomb can reach you now!")
+
+
+    def cmd_bomb(self, msg, arg):
+        """
+        Create a bomb with a specified timer, eg: 'bomb 1.5' for a 1.5 second
+        fuse.
+
+        """
+
+        holder = msg.sender
+        if self.get_shielded(holder):
+            return msg.reply("Your sense of honour insists that you furl your "
+                              "umbrella before lighting the fuse")
+        # Otherwise get a time from the first word of arg.
+        ...
+
+    def cmd_throw(self, msg, arg):
+        """Throw a bomb to a user, eg: 'throw benh@ensoft.co.uk'."""
+        target = arg.split(' ')[0]
+        if not self.bombs[msg.sender]:  # Do we even have a bomb?
+            msg.reply("You idly throw your hat, wishing you had something more"
+                      "'splodey")
+        elif self.get_shielded(msg.sender):  # Must be vulnerable while throwing.
+            msg.reply("You notice that your unfurled umbrella would hinder "
+                       "your throw.")
+        elif not target in self.usermanagement. ...
+        elif self.get_shielded(target):  # Target registered/vulnerable?
+            msg.reply("You see your target hunkered down under their umbrella. "
+                       "No doubt a bomb would have no effect on that "
+                       "monstrosity.")
+        else:  ...
+
+    ...
+
+    def register_kill(self, user):
+        ...
+        self.users[user].kills += 1  # update our local copy
+
+    # Use our local copy of database information to minimise database access.
+    def get_kills(self, user):
+        return self.users[user].kills if user in self.users else 0
+
+    def get_shielded(self, user):
+        return self.users[user].shield if user in self.users else True
+
+    def get_registered(self, user):
+        return user in self.users
+
+    @staticmethod
+    def get_level(kills):
+        ...
+}}}
+
+There are a few things here to note.
+
+First and foremost: database calls are '''synchronous''' i.e. !EnDroid will grind to a halt (briefly) each time the database is accessed. In the above code, we have kept only 'kills' recorded in the
+database (we could have kept 'shield' there too but that would mean many more read/writes). As a result things will be faster but if !EnDroid restarts for any reason, all users umbrellas will become
+unfurled (but this is not a particular problem).
+
+Secondly - it is generally a good idea to design plugins to be at least somewhat '''spam-resistent'''. In this case we have used an opt-in policy (an !EnDroid user will know nothing of the PTB plugin
+until he/she furls his/her umbrella) and have provided an option to silence the plugin (by unfurling it again).
+
+Thirdly we see some more of the functionality of !CommandPlugin. The functions `cmd_[?un]furl_umbrella` will respond to messages: "[?un]furl umbrella" i.e. require two words to activate. This idea
+extends indefinitely, it would be completely possible to create the command: 
+`cmd_go_and_buy_a_new_umbrella_mine_is_somewhat_battlescarred`
+which would respond to the message "go and buy ...".
+
+= The Full Code =
+
+A few minor changes have been made below - mostly to do with commenting and report strings.
+
+{{{#!highlight python
+from endroid.plugins.command import CommandPlugin
+from endroid.cron import Cron
+from collections import defaultdict, namedtuple
+from endroid.database import Database
+
+DB_NAME = "PTB"
+DB_TABLE = "PTB"
+
+class User(object):
+    __slots__ = ('name', 'kills', 'shield')
+    def __init__(self, name, kills=0, shield=True):
+        self.name = name
+        self.kills = kills
+        self.shield = shield
+
+    def __repr__(self):
+        return "User(name={}, kills={}, shield={})".format(self.name, self.kills, self.shield)
+
+class Bomb(object):
+    ID = 0
+    def __init__(self, source, fuse, plugin):
+        self.source = source  # Who lit the bomb?
+        self.user = None  # Our current holder.
+        self.plugin = plugin  # Plugin instance we belong to.
+        self.history = set()  # Who has held us?
+
+        idstring = self.get_id()  # Get a unique registration_name.
+        plugin.cron.register(self.explode, idstring)
+        plugin.cron.setTimeout(fuse, idstring, None)  # Schedule detonation.
+
+    # This function is called by Cron and given an argument. We don't need an
+    # argument so just ignore it.
+    def explode(self, _):
+        # Some shorthands.
+        get_rooms = self.plugin.usermanagement.get_available_rooms
+        send_muc = self.plugin.messagehandler.send_muc
+        send_chat = self.plugin.messagehandler.send_chat
+
+        msg_explode = "!!!BOOM!!!"
+        msg_farexplode = "You hear a distant boom"
+        msg_kill = "{} was got by the bomb"
+
+        rooms = get_rooms(self.user)
+        for room in rooms:
+            # Let everyone in a room with self.user here the explosion.
+            send_muc(room, msg_explode)
+            send_muc(room, msg_kill.format(self.user))
+
+        # Alert those who passed the bomb that it has exploded.
+        for user in self.history:
+            if user == self.user:
+                send_chat(self.user, msg_explode)
+                send_chat(self.user, msg_kill.format("You"))
+            else:
+                send_chat(user, msg_farexplode)
+                send_chat(user, msg_kill.format(self.user))
+
+        self.plugin.register_kill(self.source)
+        self.plugin.bombs[self.user].discard(self)
+
+
+    def throw(self, user):
+        # Remove this bomb from our current user.
+        self.plugin.bombs[self.user].discard(self)
+
+        self.history.add(user)
+        self.user = user
+
+        # Add it to the new user.
+        self.plugin.bombs[self.user].add(self)
+
+    @classmethod
+    def get_id(cls):
+        # Generate a unique id string to register our explode method against.
+        result = Bomb.ID
+        cls.ID += 1
+        return "bomb" + str(result)
+
+
+class PassTheBomb(CommandPlugin):
+    help = "Pass the bomb game for EnDroid"
+    bombs = defaultdict(set)  # Users : set of bombs.
+    users = dict()  # User strings : User objects.
+
+    def endroid_init(self):
+        self.db = Database(DB_NAME)
+        if not self.db.table_exists(DB_TABLE):
+            self.db.create_table(DB_TABLE, ('user', 'kills'))
+        else:
+            # Make a local copy of the registration database.
+            data = self.db.fetch(DB_TABLE, ['user', 'kills'])
+            for dct in data:
+                self.users[dct['user']] = User(dct['user'], dct['kills'])
+
+    def cmd_furl_umbrella(self, msg, arg):
+        """
+        This is how a user enters the game - allows them to be targeted
+        and to create and throw bombs.
+
+        """
+        user = msg.sender
+        if not self.get_shielded(user):
+            msg.reply("Your umbrella is already furled!")
+        else:
+            if self.get_registered(user):
+                self.users[user].shield = False
+            else:  # They are not - register them.
+                self.db.insert(DB_TABLE, {'user': user, 'kills': 0})
+                self.users[user] = User(user, kills=0, shield=False)
+            msg.reply("You furl your umbrella!")
+    cmd_furl_umbrella.helphint = ("Furl your umbrella to participate in the "
+                                  "noble game of pass the bomb!")
+
+    def cmd_unfurl_umbrella(self, msg, arg):
+        """A user with an unfurled umbrella cannot create or receive bombs."""
+        user = msg.sender
+        if self.get_shielded(user):
+            msg.reply("Your umbrella is already unfurled!")
+        else:
+            # To get user must not have been shielded ie they must have furled
+            # so they will be in the database.
+            self.users[user].shield = True
+            msg.reply("You unfurl your umbrella! No bomb can reach you now!")
+    cmd_unfurl_umbrella.helphint = ("Unfurl your umbrella to cower from the "
+                                    "rain of boms!")
+
+    def cmd_bomb(self, msg, arg):
+        """Create a bomb with a specified timer."""
+
+        holder = msg.sender
+        if self.get_shielded(holder):
+            return msg.reply("Your sense of honour insists that you furl your "
+                              "umbrella before lighting the fuse")
+        # Otherwise get a time from the first word of arg.
+        try:
+            time = float(arg.split(' ', 1)[0])
+            # Make a new bomb and throw it to its creator.
+            Bomb(msg.sender, time, self).throw(msg.sender)
+            msg.reply("Sniggering evilly, you light the fuse...")
+        # Provision for a failure to read a time float...
+        except ValueError:
+            msg.reply("You struggle with the matches")
+    cmd_bomb.helphint = ("Light the fuse!")
+
+    def cmd_throw(self, msg, arg):
+        """Throw a bomb to a user, eg: 'throw benh@ensoft.co.uk'"""
+        target = arg.split(' ')[0]
+        # We need a bomb to throw.
+        if not self.bombs[msg.sender]: 
+            msg.reply("You idly throw your hat, wishing you had something " 
+                       "rounder, heavier and with more smoking fuses.")
+        # Need our umbrella to be furled.
+        elif self.get_shielded(msg.sender):
+            msg.reply("You notice that your unfurled umbrella would hinder "
+                       "your throw.")
+        # Check that target is online.
+        elif not target in self.usermanagement.get_available_users():
+            msg.reply("You look around but cannot spot your target")
+        elif self.get_shielded(target):  # Target registered/vulnerable?
+            msg.reply("You see your target hunkered down under their umbrella. "
+                       "No doubt a bomb would have little effect on that "
+                       "monstrosity.")
+        else:
+            self.bombs[msg.sender].pop().throw(target)
+            msg.reply("You throw the bomb!")
+            self.messagehandler.send_chat(target, "A bomb lands by your feet!")
+    cmd_throw.helphint = ("Throw a bomb!")
+
+    def cmd_kills(self, msg, arg):
+        kills = self.get_kills(msg.sender)
+        nick = self.usermanagement.get_nickname(msg.sender, 
+                                                     self.place_name)
+        level = self.get_level(kills)
+
+        text = "{} the {} has {} kill".format(nick, level, kills)
+        text += ("" if kills == 1 else "s")
+        msg.reply(text)
+    cmd_kills.helphint = ("Receive and gloat over you score!")
+
+    def register_kill(self, user):
+        kills = self.get_kills(user)
+        # Change the value of 'kills' to kills+1 in the row where 'user' = user.
+        self.users[user].kills += 1
+        self.db.update(DB_TABLE, {'kills': kills+1}, {'user': user})
+
+    def get_kills(self, user):
+        return self.users[user].kills if user in self.users else 0
+
+    def get_shielded(self, user):
+        return self.users[user].shield if user in self.users else True
+
+    def get_registered(self, user):
+        return user in self.users
+
+    @staticmethod
+    def get_level(kills):
+        if kills < 5:
+            level = 'novice'
+        elif kills < 15:
+            level = 'apprentice'
+        elif kills < 35:
+            level = 'journeyman'
+        elif kills < 65:
+            level = 'expert'
+        elif kills < 100:
+            level = 'master'
+        else:
+            level = 'grand-master'
+        return level
+
+}}}
+
+= Extras =
+
+== Adding Configuration ==
+
+We can add configuration to our plugin by adding a section in `endroid.conf`:
+
+{{{
+[room | group : * : pconfig : endroid.plugins.passthebomb]
+my_string = this is a string
+my_int = 123
+my_list = this, has, commas, so, is, a, list
+my_list2 = 1
+           2
+           3
+# This will be ignored as long as # is in the first column.
+           4
+           5
+}}}
+
+These variables will now be available in the `self.vars` dictionary, which will look like this:
+
+{{{#!highlight python
+self.vars = {
+ 'my_string' : 'this is a string',
+ 'my_int' : 123,
+ 'my_list': ['this', 'has', 'commas', 'so', 'is', 'a', 'list']
+ 'my_list2': [1,2,3,4,5]
+}
+}}}
+
+See [[../Configuration|EnDroid configuration]] for more details on the format of the config file.
+
+= Further Reading =
+
+ * [[../Reference|EnDroid reference]]
+ * [[http://www.bartitsu.org/index.php/2009/05/the-umbrella-a-misunderstood-weapon/|JFSullivan]]
+

@@ -1,0 +1,127 @@
+#acl EnsoftLander:read,write,delete,revert,admin All:read
+
+<<TableOfContents>>
+
+= Logs =
+
+!EnDroid currently logs to two places (this is a bug - !EnDroid currently uses `twisted.log` ''and'' `python.logging` to generate log messages - these should be combined!)
+
+== The Console ==
+
+ * This is where basic log output is displayed (generated from the `logging.[info|debug|...]` calls in the code).
+   * The verbosity of this log can be altered with the `-l <integer>` flag, integer defaults to `1`. Lower numbers result in more logging.
+   * If something strange happens to !EnDroid and nothing is shown here, consult the log file.
+
+== The Logfile ==
+
+ * The log file as specified in `endroid.conf` (defaults to `~/.endroid/endroid.log`):
+   * This is where `twisted` does all its logging.
+   * If a `Deferred` has thrown an Exception - the traceback will be in this file.
+   * If something is going wrong and there are still no apparent errors here, use the `-t` flag to start !EnDroid and look for `bad-request` or `error` in the xml.
+   * Any `print` statements in the code will have their output redirected here.
+ * The location of the log file may be specified with the `-L` or `--logfile` +  `<logfile>` flag.
+
+= Debugging =
+
+== Manhole ==
+
+Manhole provides a way of controlling !EnDroid via ssh. It gives the user a python console through which all of !EnDroid's internals may be accessed as it is running.
+
+To enable Manhole, pass the flag: `-m <user_name> <password> <port>` to !EnDroid on startup. Ssh access is then achieved with `ssh <user_name>@localhost -p <port>` and entering the password.
+
+Once inside Manhole, the user has access to the active instance of !EnDroid via `droid`. For example:
+ * `droid.usermanagement._pms` - will return the dictionary of `{<room/group name> : <pluginmanager instance>}`
+ * `droid.usermanagement._pms['all'].get('endroid.plugins.<your_plugin_name>')` will return the instance of `<your_plugin>` active in the `'all'` usergroup.
+
+A user may also define functions, import modules and generally lark around as they would in a regular python prompt. (It is almost certainly worth, for example, writing a short module with some helper
+functions to reduce the amount of typing required in Manhole).
+
+=== A Usage Example ===
+
+Start up !EnDroid with manhole enabled:
+{{{#!highlight python
+me@localhost:~/endroid/src$ bash endroid.sh -t -m <user>
+<password> <port>
+11:06:46 INFO     EnDroid starting up with conffile 
+/home/<me>/.endroid/endroid.conf
+11:06:46 INFO     Found JID: <my-endroid-jid>
+11:06:46 INFO     Found Secret: **********
+...
+11:06:46 INFO     Starting manhole
+...
+}}}
+
+And in a separate console:
+{{{#!highlight python
+me@localhost:~/endroid/src$ ssh <user>@localhost -p <port>
+admin@localhost's password: <password>
+>>> # I'm now in a python prompt
+>>> 1+1
+2
+>>> droid
+<endroid.Endroid object at 0xabd614c>
+>>> # I fancy sending myself a message
+>>> droid.messagehandler.send_chat("me@myho.st", "Hi me, 
+all is well in manhole-land!")
+>>> # I received the chat message.
+>>> logging.info("Hi console log!")
+>>> # console log: 11:04:28 INFO     Hi console log!
+>>> # Ctrl-D to exit
+Connection to localhost closed.
+me@localhost:~$
+}}}
+
+=== An Import Example ===
+
+A useful helper module for debugging plugins.
+
+{{{#!highlight python
+# src/my_helper.py
+
+def get_loaded(droid, room_group):
+    """
+    Return the _loaded dict of {plugin_name : PluginProxy object}
+    for room_group.
+
+    Note that a PluginProxy object is just a wrapper round a Plugin
+    object, and all of the plugin's attributes/functions may be accessed
+    through it.
+
+    """
+    return droid.usermanagement._pms[room_group]._loaded
+
+def get_instance(droid, room_group, plugin_name):
+    """Get the instance of 'plugin_name' active in 'room_group'.
+
+    'plugin_name' may be the full plugin_name e.g. 'endroid.plugins.chuck'
+    or just the last part e.g. 'chuck'
+
+    """
+    dct = get_loaded(droid, room_group)
+    if plugin_name in dct:
+        return dct[plugin_name]
+    else:
+        for key, item in dct.items():
+            if plugin_name == key.split('.')[-1]:
+                return item
+        fmt = "Plugin '{}' not active in '{}'"
+        raise KeyError(fmt.format(plugin_name, room_group))
+}}}
+
+Then checking to see if our plugin's config has been properly loaded from in Manhole is easy:
+
+{{{#!highlight python
+>>> import my_helper
+>>> my_helper.get_loaded(droid, 'all').keys()
+['endroid.plugins.unhandled', 'endroid.plugins.patternmatcher',
+ 'endroid.plugins.httpinterface', 'endroid.plugins.roomowner', 
+ 'endroid.plugins.chuck', 'endroid.plugins.command', 
+ 'endroid.plugins.passthebomb', 'endroid.plugins.invite', 
+ 'endroid.plugins.help', 'endroid.plugins.broadcast']
+>>> my_helper.get_instance(droid, 'all', 'chuck').vars
+{'my_list': ['list', 'with', 'numbers', 1, 2, 3], 
+ 'my_list2': ['newlines', 'also', 'mean', 'lists'], 
+ 'my_int': 123, 'my_string': 'this is a string'}
+>>>
+}}}
+

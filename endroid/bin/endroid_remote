@@ -1,0 +1,175 @@
+#!/usr/bin/env python
+
+import os
+import re
+import sys
+import urllib
+import argparse
+
+
+KEY_ENV_VAR = 'ENDROID_REMOTE_KEY'   # eg XACKJAASKJDAHD
+JID_ENV_VAR = 'ENDROID_REMOTE_USER'  # eg frodo@shire.org
+URL_ENV_VAR = 'ENDROID_REMOTE_URL'   # eg http://127.0.0.1:8880/remote/
+
+
+class UserError(Exception):
+    pass
+
+
+class EndroidError(Exception):
+    pass
+
+
+def endroid_send(msg, urgent=False):
+    urgent = str(urgent).lower()
+    params = {'user': os.environ[JID_ENV_VAR],
+              'key': os.environ[KEY_ENV_VAR],
+              'sms': urgent,
+              'message': msg}
+    f = urllib.urlopen(os.environ[URL_ENV_VAR], urllib.urlencode(params))
+    for line in f.readlines():
+        line = line.strip()
+        if "Error:" in line:
+            raise EndroidError(line)
+
+
+class SubCmd(object):
+    def __init__(self, args):
+        """Initialise the sub command with args as returned from parse_args."""
+        self.urgent = args.urgent
+        self.process_args(args)
+
+    @classmethod
+    def add_args(cls, parser):
+        """Add arguments to the parser."""
+        parser.add_argument('-u', '--urgent',
+                            action='store_true',
+                            help="Send this message with urgent priority")
+        cls.add_subcmd_args(parser)
+
+    @classmethod
+    def add_subcmd_args(cls, parser):
+        """Add sub-command specific arguments to the parser."""
+
+    def process_args(self, args):
+        """Process args as returned from parse_args."""
+
+    def send(self, msg):
+        """Send the message to EnDroid."""
+        endroid_send(msg, self.urgent)
+
+
+class Watch(SubCmd):
+    cmd = 'watch'
+    help = ("Read lines from stdin, print them to stdout, and send lines "
+            "matching a regex to EnDroid.")
+
+    @classmethod
+    def add_subcmd_args(cls, parser):
+        parser.add_argument('regex',
+                            help="Python regular expression to match "
+                            "against lines read from stdin. Matching "
+                            "lines will be sent to EnDroid")
+
+    def process_args(self, args):
+        self._re = re.compile(args.regex)
+
+    def event_loop(self):
+        line = sys.stdin.readline()
+        while line:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+
+            if self._re.search(line):
+                self.send(line.rstrip())
+
+            line = sys.stdin.readline()
+
+
+class Tee(SubCmd):
+    cmd = 'tee'
+    help = ("Read lines from stdin, print them to stdout and send them to "
+            "EnDroid.")
+
+    def event_loop(self):
+        msg = ""
+
+        line = sys.stdin.readline()
+        while line:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+            msg += line
+
+            line = sys.stdin.readline()
+
+        self.send(msg)
+
+
+class Echo(SubCmd):
+    cmd = 'echo'
+    help = 'Send a message to EnDroid.'
+
+    @classmethod
+    def add_subcmd_args(cls, parser):
+        parser.add_argument('message', nargs='+',
+                            help="The message to send to endroid")
+
+    def process_args(self, args):
+        self.msg = ' '.join(args.message)
+
+    def event_loop(self):
+        self.send(self.msg)
+
+
+class Cat(SubCmd):
+    cmd = 'cat'
+    help = "Read lines from stdin and send them to EnDroid."
+
+    def event_loop(self):
+        self.send(sys.stdin.read())
+
+
+def verify_environment():
+    if JID_ENV_VAR not in os.environ:
+        raise UserError("Target user env var ({}) not set".format(JID_ENV_VAR))
+
+    if KEY_ENV_VAR not in os.environ:
+        raise UserError("Message key env var ({}) not set".format(KEY_ENV_VAR))
+
+    if URL_ENV_VAR not in os.environ:
+        raise UserError("Endroid URL env var ({}) not set".format(URL_ENV_VAR))
+
+
+def main(cli_args):
+    parser = argparse.ArgumentParser()
+    sub_ps = parser.add_subparsers(title="Subcommands", dest='chosen_sub')
+
+    subcmd_map = {}
+    for cls in SubCmd.__subclasses__():
+        subcmd_map[cls.cmd] = cls
+        sub_p = sub_ps.add_parser(cls.cmd, help=cls.help) 
+        cls.add_args(sub_p)
+
+    args = parser.parse_args(cli_args)
+
+    # Check the correct env vars have been set - do this after the arg parse
+    # in case the user has passed just -h
+    try:
+        verify_environment()
+    except UserError as e:
+        print(e)
+        return 2
+
+    # Create an instance of the selected subcommand
+    subcmd_obj = subcmd_map[args.chosen_sub](args)
+
+    try:
+        subcmd_obj.event_loop()
+    except EndroidError as e:
+        print("EnDroid error: %s" % e)
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

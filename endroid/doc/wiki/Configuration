@@ -1,0 +1,69 @@
+#acl EnsoftLander:read,write,delete,revert,admin All:read
+
+<<TableOfContents>>
+
+== Basic Configuration ==
+
+!EnDroid reads all of its config from a single configuration file, searched for at (in order):
+ * conffile as specified on the command file e.g. `endroid.sh <conffile>`.
+ * `ENDROID_CONF` environment variable.
+ * `~/.endroid/endroid.conf` (recommended)
+ * `/etc/endroid/endroid.conf`
+
+An example config file can be found at `/usr/share/doc/endroid/examples/endroid.conf` if !EnDroid has been installed or in the source repository at `etc/endroid.conf`.
+The basic sections of the config file are described below:
+
+{{{#!python
+# Comments are denoted by a hash character in the first column
+
+[Setup]
+# EnDroid's jabber login details.
+jid = marvin@hhgg.tld/planet
+password = secret
+
+# EnDroid's default nickname. If not specified, set to the part of jid before the @
+# nick = Marvin
+
+# EnDroid's full contact list. Users on this list will be added as friends,
+# users not on this list will be removed from contacts and will be unable
+# to communicate with EnDroid.
+users =
+
+# What rooms EnDroid will attempt to create and join. Defaults to []
+# rooms = room1@ser.ver,
+
+# What usergroup EnDroid will register plugins with. Defaults to ['all']
+# groups = all, admins
+
+logfile = ~/.endroid/endroid.log
+
+[Database]
+dbfile = ~/.endroid/endroid.db
+
+# a section matching groups and rooms with any name
+[ group | room : *]
+plugins=
+#    endroid.plugins.<your_plugin>,
+#    endroid.plugins.<other plugin your plugin depends on>,
+#    ...
+}}}
+
+== Some Notes on Syntax ==
+
+ * !EnDroid will try to interpret values in the config file as Python objects, so `my_var = 1`.
+ * Bools will only be converted if they are `True` or `False` (i.e. capitalised).
+ * Lists are detected by commas or newlines:{{{#!python
+my_list = multiple, entries, present
+my_list2 = newlines
+    also
+    mean
+    lists
+}}}
+ * For a list with a single item, a comma must be present at the end of the list:{{{#!python
+expects_a_list1 = foo
+# Will result in a string foo not a list
+
+expects_a_list2 = foo,
+# Will result in a list of items with only one entry - foo
+}}}
+

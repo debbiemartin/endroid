@@ -1,0 +1,16 @@
+#acl EnsoftLander:read,write,delete,revert,admin All:read
+
+= EnDroid =
+
+!EnDroid is a modular XMPP bot platform written in Python and built upon the Twisted framework.
+
+== Documentation ==
+
+ * [[/GettingStarted|Getting Started]]
+ * [[/Configuration|Configuration]]
+ * [[/PluginTutorial|Plugin Tutorial]]
+ * [[/Reference|API Reference]]
+ * [[/Debugging|Debugging]]
+
+<<Include(/BluePrints)>>
+

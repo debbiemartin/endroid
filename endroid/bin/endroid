@@ -1,0 +1,10 @@
+#!/bin/sh
+# Use exec here to ensure that upstart (or other init daemon) can easily follow
+# the true daemon process.
+export PYTHONPATH="~/.endroid/plugins/":"/usr/lib/endroid/dependencies/wokkel-0.7.1-py2.7.egg":"/usr/lib/endroid/plugins":"${PYTHONPATH}"
+
+# We allow people to specify which python to use by setting the environment 
+# variable ENDROID_PYTHON to the Python they want to use.
+export ENDROID_PYTHON=${ENDROID_PYTHON:=python}
+
+exec $ENDROID_PYTHON -m endroid $@

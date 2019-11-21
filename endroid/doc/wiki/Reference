@@ -1,0 +1,742 @@
+#acl EnsoftLander:read,write,delete,revert,admin All:read
+
+<<TableOfContents>>
+
+This API reference will be split into three main parts.
+ Endroid core:: APIs for the Plugin class and classes directly accessible from that class. All plugins will be able to access all of this API with no extra work.
+ Utilities:: APIs provided by the Endroid modules Database (for persistent data storage) and Cron (for task scheduling) which plugins may import.
+ Helper Plugins:: !EnDroid plugins which are designed to be inherited from (e.g. {{{CommandPlugin}}} or 'imported' via {{{Plugin.get("endroid.plugins.<name>")}}} and provide useful extra
+functionality.
+
+= Glossary =
+ muc/chat:: A muc (Multi-User Chat) message is one sent in or to a room (group chat). A chat message is one sent to a single user.
+ jid:: The address of a user or room. This is a different format depending on the entity being addressed and plugins shouldn't need to know the format being used. However in case its useful it will be: {{{user@ho.s.t}}} for a single user, {{{room_name@serv.er}}} for a room and {{{room_name@serv.er/user_nickname}}} for a user in a room.
+
+= Core Endroid =
+
+API reference for the Plugin class and classes directly available to it. All plugins are expected to inherit from either {{{endroid.pluginmanager.Plugin}}} or a subclass of this class e.g.
+{{{endroid.plugins.CommandPlugin}}}.
+
+== Plugin ==
+
+{{{#!highlight python
+class Plugin(object):
+    """
+    All plugins are expected to subclass plugin in one way or another.
+
+    Attributes:
+     - usermanagment
+     - messagehandler
+       References to Endroid's usermanagment and messagehandler objects
+       through which further APIs may be called.
+     - cron
+       A reference to the Cron singleton through which task scheduling is available.   
+
+     - dependencies
+       Iterable of plugins this plugin requires to be loaded before it can be
+       activated by EnDroid.
+
+     - preferences
+       Iterable of plugins this plugin will use if they are available but does
+       not require.
+
+     - place
+       The environment the plugin is active in - either 'room' (muc) or 'group'
+       (single user chat - active in a user group).
+     - place_name
+       The name of the environment the plugin is active in - either a room's
+       address (room@serv.er) or the name of a user group.
+     
+     - vars
+       A dictionary of config options read from the section in EnDroid's
+       config file:
+       [ self.place_name : self.place : pconfig : <plugin_name> ]
+
+    """
+
+    def register_muc_callback(self, callback, inc_self=False, priority=PRIORITY_NORMAL):
+    def register_chat_callback(self, callback, inc_self=False, priority=PRIORITY_NORMAL):
+    """
+    Register a callback to be called when a muc or chat message is received.
+
+    - inc_self tells EnDroid whether it should do the callback on messages 
+    that EnDroid has sent itself.
+    - priority is unused by Endroid but accessible to plugins and measures the
+    importance of a message (lower numbers = more important).
+
+    """
+
+    def register_unhandled_muc_callback(self, callback, inc_self=False,
+                                       priority=PRIORITY_NORMAL):
+    def register_unhandled_chat_callback(self, callback, inc_self=False, 
+                                         priority=PRIORITY_NORMAL):
+    """
+    Unhandled callbacks are called by EnDroid when a message has not been
+    processed by any callbacks.
+
+    They called by a plugin via Message.unhandled(*args) (usually when the
+    plugin has tried to run its own callback but failed) and so the message has
+    not been handled.
+
+    """
+
+    # The following four methods register filter functions which take Message 
+    # objects and return bools.
+    # Callable should take a message and return a bool.
+    # If a filter returns False, the message will be dropped. A filter 
+    # may modify a Message object's attributes.
+    # Callable may alter the message by changing its attributes.
+
+    def register_muc_filter(self, callback, inc_self=False, priority=PRIORITY_NORMAL):
+    def register_chat_filter(self, callback, inc_self=False, priority=PRIORITY_NORMAL):
+    """Receive filters (can cause EnDroid to ignore the message)."""
+    
+    def register_muc_send_filter(self, callback, inc_self=False, priority=PRIORITY_NORMAL):
+    def register_chat_send_filter(self, callback, inc_self=False, priority=PRIORITY_NORMAL):
+    """Send filters (can cause EnDroid to not send a message)."""
+
+    def get(self, plugin_name):
+    """
+    Load plugin called plugin_name (eg endroid.plugins.my_plugin).
+
+    This acts very much like import; it returns an object through which 
+    plugin_name's functions can be accessed.
+    Note that if get is used, plugin_name should be added to the plugin 
+    class's dependencies tuple.
+
+    """
+
+    def get_dependencies(self):
+    def get_preferences(self):
+    """
+    Return a full list of the plugin's dependencies/preferences.
+
+    This includes those of the plugins it depends on/prefers and so on 
+    down the chain.
+
+    """
+
+    def list_plugins(self):
+    """
+    Get an iterable of all the plugins active in this plugin's environment 
+    (a specific room or usergroup - not globally).
+
+    """
+
+}}}
+
+=== Plugin Scope ===
+
+Plugins are separately instantiated in each room they are configured in and for each user group. Bear in mind that if a plugin wishes to store data globally (across all rooms and user groups), a class
+variable should be used.
+
+Plugins can find out information about their environment via {{{self.place}}} and {{{self.place_name}}} which return the type of environment ({{{"room"}}} or {{{"group"}}}) and the name of the
+environment (e.g. {{{"room1@serv.er"}}} or {{{"admins"}}}) respectively.
+
+== MessageHandler, Message ==
+
+APIs for !EnDroid's message functionality.
+
+{{{#!highlight python
+class MessageHandler(object):
+    """A class abstracting XMPP's message protocols."""
+
+    def send_muc(self, room, body, source=None, priority=PRIORITY_NORMAL):
+        """
+        Send a multi-user-chat message to the room. 
+
+        Source is optional. It is unused by EnDroid but visible to plugins
+        and filters (eg a filter may block all messages with a specified source)
+        Priority is not used internally but is available to plugins. 
+        PRIORITY_NORMAL = 0, the lower the number, the higher the priority.
+
+        """
+
+    def send_chat(self, user, body, source=None, priority=PRIORITY_NORMAL,
+                  response_cb=None, no_response_cb=None, timeout=None):
+        """
+        Send chat message to person with address user.
+
+        The message will be run through any registered filters before it is
+        sent.
+        
+        <source> and <priority> are the same as in send_muc.        
+
+        response_cb is an optional callback to be called to handle the next
+        message received from the user. (Note that only the latest such callback
+        will be executed: if you call send_chat twice in quick succession,
+        only the final send_chat's callback will be called.)
+        This callback must take one argument (a Message object).
+        no_response_cb is an optional callback to be called if the user does
+        not give a response in <timeout> seconds. It takes only a <sender> JID
+        string. <timeout> defaults to config option context_response_timeout.
+        Either response_cb or no_response_cb can be provided without the other.
+        If response_cb is not specified but no_response_cb is, Endroid
+        effectively waits for the timeout to elapse; if the user didn't reply
+        in that time, it calls no_response_cb.
+        """
+
+class Message(object):
+    """
+    Object representing a single message (muc or chat).
+
+    A Message object is passed by MessageHandler to any callbacks registered
+    via the Plugin.register_ commands.
+
+    Attributes:
+      - sender - a string representing the sender's userhost.
+      - sender_full - a string representing the sender's full jid.
+      Note: sender_full is used to reply to messages so that if a user is
+      online on more than one resource the reply will go to the right one.
+
+      - body - the text of the message.
+      - recipient - a string representing the address to send the message to
+      - priority - a number, lower = more important (unused by EnDroid, can
+      be accessed by plugins).
+
+    """
+
+    def reply(self, body):
+        """
+        Reply with a single or multi-user-chat message to self.sender.
+
+        The reply will have the same type as the received message, so replying
+        to a message in a room will reply to the whole room.
+
+        """
+
+    def reply_to_sender(self, body):
+        """
+        Reply with a single user chat to self.sender. 
+
+        Note the difference from reply - calling reply on a group message will 
+        send a group message, calling reply_to_sender on the same message will 
+        send a single user chat message to its sender.
+
+        """
+
+    def send(self):
+        """Send the Message to it's recipient."""
+
+    def unhandled(self, *args):
+        """
+        Notify the message that the caller hasn't handled it. This should only
+        be called by plugins that have registered as a handler (and thus have
+        incremented the handler count for this message).
+
+        This method takes arbitrary arguments so it can be used as deferred
+        callback or errback.
+
+        """
+}}}
+
+For examples of using the context-aware response callbacks, see the Remote
+and Timer plugins.
+
+=== Context awareness ===
+This is implemented by allowing plugins to attach callbacks to 
+MessageHandler.send_chat() for 'when user next replies' and 'if no reply
+received'. There is a config file option for the latter.
+
+{{{
+# Default time it takes for context-aware plugins to realise that no response
+# is coming, in seconds
+context_response_timeout = 30
+}}}
+
+== UserManagement ==
+
+Note: all the get_ methods take a name string which is one of:
+ * The jid of a room
+ * The name of a usergroup
+ * None (in which case results will be looked for in !EnDroid's contact list)
+
+{{{#!highlight python
+class UserManagement(object):
+    """
+    A class abstracting XMPP's presence protocols.
+
+    In the get_ member functions, name (a userhost string e.g. user@ho.st or 
+    room@serv.er) specifies in which room or group to run a search. If it is
+    None, the search will be run on EnDroid's contact list (of rooms or users
+    depending on the function).
+
+    """
+
+    def get_users(self, name=None):
+        """Return an iterable of users registered with room/group name."""
+
+    def get_available_users(self, name=None):
+        """Return an iterable of users available in room/group name."""
+
+    def get_groups(self, user=None):
+        """Return an iterable of groups the user is registered with."""
+
+    def get_available_groups(self, user=None):
+        """Return an iterable of groups the user is present in."""
+
+    def get_rooms(self, user=None):
+        """Return an iterable of rooms the user is registered with."""
+
+    def get_available_rooms(self, user=None):
+        """Return an iterable of rooms the user is present in."""
+
+    def get_nickname(self, user, place=None):
+        """
+        Given a user jid (user@ho.s.t) return the user's nickname in place,
+        or if place is None (default), the user part of the jid.
+
+        """
+
+    def invite(self, user, room, reason=None):
+        """
+         Invite a user to a room.
+
+        Will only send invitation if the user is in our contact list and online,
+        and if the user is registered in the room but not currently in it.
+
+        Returns a tuple (success, report-message).
+
+        Report message may be:
+            "User not registered"
+            "User not available"
+            "Room not registered"
+            "User not registered in room"
+            "User already in room"
+            "Invitation sent"
+
+        """
+
+    def register_presence_callback(self, user, callback,
+                                   available=False, unavailable=False):
+        """
+        Register a callback that is to fire when the user changes presence.
+        This is a one-shot event: when the user next changes presence in the
+        specified way, the callback will fire and then be forgotten.
+        The "specified way" is determined by which combination of available=True
+        and unavailable=True is supplied to register_presence_callback.
+        Raises ValueError if neither available nor unavailable is passed as True.
+        :param user: partial JID of the user to associate this callback with
+        :param callback: a callback, no arguments, to be called when the user changes presence
+        :param available: set True to have callback fire when user comes online
+        :param unavailable: set True to have callback fire when user goes offline
+        """
+
+    def ping(self, jid):
+        """
+        XMPP Pings a string JID.
+        Ignores any pong we might receive.
+        :param JID: string JID of the user to ping.
+        """
+
+}}}
+
+=== Presence callbacks ===
+The function {{{Plugin.rosters.register_presence_callback}}} allows plugins to register callbacks to be triggered when a specified user changes state from Unavailable to Available, or vice versa. The callback should take no arguments, and it must not block, because Endroid may execute them on the main thread. The list of callbacks is not permanent: it is forgotten when Endroid is terminated.
+An example of the use of this API is the {{{pounce}}} plugin.
+
+= Utilities =
+
+API reference for !EnDroid's utility classes.
+
+== Database ==
+
+A wrapper around an sqlite3 database.
+
+{{{#!highlight python
+class Database(object):
+    """
+    This is wrapper around an sqlite3 database. Note that all accesses
+    are _synchronous_, so should be minimised. (It is likely that in
+    the future all accesses will be made using twisted.enterprise.adbapi
+    which is asynchronous).
+
+    """
+    def __init__(self, modName):
+    """Create a new database with name=modName in the Database singleton."""
+
+    def create_table(self, name, fields):
+    """
+    Create a new table in the database called 'name' and containing fields 
+    'fields' (an iterable of strings giving field titles).
+
+    """
+
+    def table_exists(self, name):
+    """Check to see if a table called 'name' exists in the database."""
+
+    def insert(self, name, fields):
+    """
+    Insert a row into table 'name'.
+    
+    Fields is a dictionary mapping field names (as defined in 
+    create_table) to values.
+
+    """
+
+    def fetch(self, name, fields, conditions={}):
+    """
+    Get data from the table 'name'. 
+
+    Returns a list of dictionaries mapping 'fields' to their values, one 
+    dictionary for each row which satisfies a condition in conditions.
+
+    Conditions is a dictionary mapping field names to values. A result
+    will only be returned from a row if its values match those in conditions.
+
+    E.g.: conditions = {'user' : JoeBloggs} 
+    will match only fields in rows which have JoeBloggs in the 'user' field.
+
+    """
+
+    def count(self, name, conditions):
+    """Return the number of rows in table 'name' which satisfy conditions."""
+
+    def delete(self, name, conditions):
+    """Delete rows from table 'name' which satisfy conditions."""
+
+    def update(self, name, fields, conditions):
+    """
+    Update rows in table 'name' which satisfy conditions. 
+
+    Fields is a dictionary mapping the field names to their new values.
+
+    """
+
+    def empty_table(self, name):
+    def delete_table(self, name):
+    """Remove all rows from/delete table 'name'."""
+}}}
+
+== Cron ==
+
+!EnDroid's task scheduling service.
+
+{{{#!highlight python
+class Cron(object):
+    def get():
+    """
+    Return a reference to the Cron singleton. All below functions can be 
+    accessed via Cron.get().<function>(args).
+
+    """
+
+class CronSing(object):
+    """The singleton returned by Cron.get()."""
+
+    def register(self, function, reg_name, persistent=True):
+    """
+    Register the callable 'function' against 'reg_name'. Note that 'reg_name'
+    must be globally unique. Allows function to be scheduled with doAtTime or
+    setTimeout.
+
+    If persistent is False, remoteTask(reg_name) will be called before the
+    the function is registered (so across a restart of EnDroid, the stored
+    tasks will be forgotten).
+
+    """
+
+    def doAtTime(self, time, locality, reg_name, params):
+    """
+    Schedule the callable registered against 'reg_name' to be called 
+    with 'params' (which must be picklable) at locality time 'time'. 
+    (Localities are from pytz.timezone).
+
+    """
+
+    def setTimeout(self, timedelta, reg_name, params):
+    """
+    Schedule the callable to be called in after 'timedelta'.
+
+    Timedelta may be a datetime.timedelta object or a real number representing 
+    the number of seconds to wait. Negative or zero values will trigger almost
+    immediately.
+
+    """
+
+    def removeTask(self, reg_name):
+        """Remove any scheduled tasks registered with reg_name."""
+
+    def getAtTimes(self):
+        """
+        Return a string showing the registration names of functions scheduled
+        with doAtTime and the amount of time they will be called in.
+
+        """
+
+    def getTimeouts(self):
+        """
+        Return a string showing the registration names of functions scheduled
+        with setTimeout and the amount of time they will be called in.
+
+        """
+}}}
+
+
+= Helper Plugins =
+
+API reference for plugins designed to be used by other plugins.
+
+All of these plugins are located at {{{endroid.plugins.<plugin_name>}}}
+
+== Command ==
+
+Plugins should inherit from {{{CommandPlugin}}} or use {{{self.comm = self.get("endroid.plugins.command")}}} to use {{{Command}}}'s methods.
+
+{{{#!highlight python
+"""
+Helper plugin to handle command registrations by other plugins. This is
+the main avenue by which plugins are expected to handle incoming messages
+and it is expected most plugins will depend on this.
+
+"""
+
+class CommandPlugin(Plugin):
+    """
+    Parent class for simple command-driven plugins.
+
+    Such plugins don't need to explicitly register their commands. Instead, they
+    can just define methods prefixed with "cmd_" and they will automatically be
+    registered. Any additional underscores in the method name will be converted
+    to spaces in the registration (so cmd_foo_bar is registered as ('foo',
+    'bar')).
+
+    In addition, certain options can be passed by adding fields to the methods:
+    - hidden: don't show the command in help if set to True.
+    - synonyms: an iterable of alternative keyword sequences to register the
+        method against. All synonyms are hidden.
+    - helphint: a hint to print after the keywords in help output.
+    - muc_only or chat_only: register for only chat or muc messages (default is
+        both).
+
+    """
+
+class Command(Plugin):
+    """
+    The instance of this class active in a plugin's room/group is 
+    returned by a Plugin.get("endroid.plugins.command") call.
+
+    This class makes it possible to access the functionality of CommandPlugin
+    without the inheritance.
+    
+    """
+
+    def register_muc(self, callback, command, helphint="", hidden=False,
+                     synonyms=()):
+        """Register a new handler for MUC messages."""
+
+    def register_chat(self, callback, command, helphint="", hidden=False,
+                      synonyms=()):
+        """Register a new handler for chat messages."""
+
+    def register_both(self, callback, command, helphint="", hidden=False,
+                      synonyms=()):
+        """Register a handler for both MUC and chat messages."""
+}}}
+
+For an example usecase look at the {{{invite}}} plugins.
+
+== HTTPInterface ==
+
+Start a webserver, allow callback registrations on URL paths, and route requests to callbacks.
+
+{{{#!highlight python
+class HTTPInterface(Plugin):
+    """
+    The actual plugin class. This may be instantiated multiple times, but is
+    just a wrapper around a HTTPInterfaceSingleton object.
+
+    """
+
+    def register_regex_path(self, plugin, callback, path_regex):
+        """
+        Register a callback to be called for requests whose URI matches:
+           http://<server>/<plugin name>/<regex>[?<args>]
+
+        Callback arguments:
+            request: A twisted.web.http.Request object.
+
+        """
+
+    def register_path(self, plugin, callback, path_prefix):
+        """
+        Register a callback to be called for requests whose URI matches:
+            http://<server>/<plugin name>/<prefix>[?<args>]
+
+        Or:
+            http://<server>/<plugin name>/<prefix>/<more path>[?<args>]
+
+        Or if the prefix is the empty string:
+            http://<server>/<plugin name>/<more path>[?<args>]
+
+        """
+}}}
+
+=== SMS ===
+
+Send text messages to a user, from Endroid's phone number.
+Currently, in order to use this, you will need a [[https://www.twilio.com/|Twilio]] account, and specify your SID, auth-token and registered phone number in the config file.
+
+{{{
+[ group | room : * : plugin : endroid.plugins.sms ]
+# Configure Endroid's SMS. We use Twilio, so there are a couple of specifics.
+# Endroid's phone number:
+phone_number = +441234567890
+# Twilio authentication token:
+auth_token = 123456789abcdef0123456789abcdef0
+# Twilio SID - not sure why it's needed along with auth, but apparently it is
+twilio_sid = 123456789abcdef0123456789abcdef0
+# Country code to prepend to numbers without a code
+country_code = +44
+# Number of SMS messages a user can send in bulk when token bucket is full
+user_bucket_capacity = 5
+# Rate at which each user's bucket fills up (tokens per second)
+user_bucket_fillrate = 0.016
+# Bucket token limit (across all plugins)
+global_bucket_capacity = 60
+# Rate at which the global bucket fills up (tokens per second)
+global_bucket_fillrate = 0.2
+}}}
+
+==== API ====
+
+{{{#!highlight python
+class SMS(CommandPlugin):
+    """Allows plugins to send SMS messages to users; exposes relevant functions in XMPP."""
+
+    class UserNotFoundError(Exception):
+        """Error when we try to get the number of someone who hasn't told Endroid their number."""
+
+    @command(helphint="{number}", synonyms=("setnum",))
+    def sms_set_number(self, msg, arg):
+        """
+        Sets the stored phone number of the sender.
+        """
+
+    @command(helphint="", synonyms=("getnum",'sms get number'))
+    def sms_whoami(self, msg, arg):
+        """
+        Tells the user what Endroid thinks their phone number is.
+        """
+
+    @command(helphint="", synonyms=("delnum","sms forgetme"))
+    def sms_forget_me(self, msg, arg):
+        """
+        Tells Endroid to clear its stored number for the sender of the message
+        """
+
+    def get_phone_number(self, user):
+        """
+        Fetch the stored number for a JID; raise UserNotFoundError if it doesn't exist
+        :param user: the JID string of the user to search for
+        :return: a string phone number
+        """
+
+    def number_known(self, user):
+        """
+        Returns bool(we have a number stored for this JID user).
+        :param user: JID string of user to check
+        :return: True/False if we do/don't know their number.
+        """
+
+    def send_sms(self, sender, jid, message):
+        """
+        Sends an SMS to the user with the specified JID.
+        Returns a Deferred which acts as a string containing the server's
+        response.
+        Raises self.SMSError or its descendants if there is an error.
+        :param sender: the person sending the SMS
+        :param jid: the user we're sending the SMS to
+        :param message: the message body to send to them
+        :return: output of Twilio, as a Deferred
+        """
+
+    @command(helphint="{user} {message}")
+    def sms_send(self, msg, args):
+        """
+        Sends an SMS from Endroid with the given message body to the specified user.
+        """
+        
+}}}
+
+=== Remote Plugin, endroid_remote script ===
+
+For an example usecase look at the remote plugin, this calls: {{{register_path(self, self.http_request_handler, '')}}}. This listens on {{{http://<ip address>:8880/remote/}}} by default, where a form
+can be filled in to send an !EnDroid user a chat message. You can change the port number with the following configuration file option:
+
+{{{
+# HTTP port for remote messaging
+[ group | room : * : pconfig : endroid.plugins.httpinterface ]
+http_port = 8881
+}}}
+
+You also need the {{{httpinterface}}} and {{{remote}}} plugins to be loaded.
+
+The `endroid_remote` script (located at `bin/endroid_remote` provides methods for sending a message to an !EnDroid user from the command line via the `remote` plugin. The `endroid_remote` user must
+specify the environment variables {{{ENDROID_REMOTE_KEY}}}, {{{ENDROID_REMOTE_USER}}} and {{{ENDROID_REMOTE_URL}}}. When the script runs (e.g. via {{{endroid_remote echo message here}}}) it will send
+a message or messages (e.g. "message here") to the user with JID {{{ENDROID_REMOTE_USER}}} (henceforth referred to as the recipient).
+
+To prevent anonymous spamming of users via !EnDroid, the recipient must have enabled the remote plugin by typing {{{allow remote}}} to !EnDroid. In response !EnDroid will return a key which the
+recipient will give to `endroid_remote` users who must then set the {{{ENDROID_REMOTE_KEY}}} environment variable to this key. The recipient should only distribute this key to users from whom the
+recipient is happy to receive remote notifications from.
+
+{{{ENDROID_REMOTE_URL}}} must be set to the URL of the !EnDroid instance's remote page (e.g. {{{http://127.0.0.1:8880/remote/}}}).
+
+{{{endroid_remote}}} supports the following commands:
+ * `endroid_remote echo <message>`: Send `<message>` to the !EnDroid user.
+ * `endroid_remote cat`: Send {{{stdin}}} (in a single message) to the !EnDroid user.
+ * `endroid_remote tee`: Like the cat, but also copy input to {{{stdout}}} 
+ * `endroid_remote watch <regex>`: Send each line from {{{stdin}}} that matches `<regex>` to !EnDroid (one message per line), and forward {{{stdin}}} to {{{stdout}}}.
+
+== Patternmatcher ==
+
+Message regex matching.
+
+{{{#!highlight python
+class PatternMatcher(Plugin):
+    """Plugin to simplify matching messages based on a regexp."""
+
+    def register_muc(self, callback, pattern):
+    def register_chat(self, callback, pattern):
+    """
+    Register a callback to be called when a message's body matches
+    the pattern (a regex string).
+
+    Callback will be called with the Message object as the argument.
+
+    """
+
+    def register_both(self, callback, pattern):
+    """Equivalent to register_muc(...); register_chat(...)."""
+}}}
+For a usecase, look at the {{{spell}}} plugin, which looks for a {{{(sp?)}}} in a message.
+(Notice, however, that this is currently broken since the retirement of Google's spelling API.)
+
+== ReliableSend ==
+
+Ask Endroid to send a message to a user; if that user is offline, Endroid sends the message when they next come online.
+
+{{{
+class ReliableSend(CommandPlugin):
+    """Plugin to send messages to a user, storing them if they are offline."""
+
+    def _delete_messages(self, recipient):
+        """
+        Deletes all messages that were stored for later sending.
+        Take care with this: it will allow you to delete even messages your
+        plugin didn't send.
+        :param recipient: JID of the person in question
+        """
+
+    def send_reliably(self, sender, message_text, recipient):
+        """
+        Sends a message to a user so that they will receive it eventually.
+        If the user is offline, stores the message and sends it when they come
+        online next.
+        :param sender: who sent the message (JID)
+        :param message_text: text of the message
+        :param recipient: who is to receive the message (JID)
+        :return: False if the recipient was already online and so we sent the
+         messages immediately; True if we stored them.
+        """
+}}}

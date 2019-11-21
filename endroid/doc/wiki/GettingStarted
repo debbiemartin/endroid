@@ -1,0 +1,40 @@
+#acl EnsoftLander:read,write,delete,revert,admin All:read
+
+<<TableOfContents>>
+
+= Installation =
+
+Installing EnDroid is straightforward. Installation packages are provided (currently only for Ubuntu) [[https://launchpad.net/endroid/+download|on Launchpad]]. It is also possible to run it directly
+by checking out the code using `bzr branch lp:endroid`.
+
+  Note: !EnDroid requires python 2.7 or later to run, and depends on Twisted, Wokkel, PyTZ, treq, jinja2 and python-dateutil.
+
+In order to run EnDroid needs to load certain settings from its config file. An example one is at `/usr/share/doc/endroid/examples/endroid.conf` if !EnDroid has been installed or in the 
+source repository at `etc/endroid.conf`. The settings that must be added to the config file are details of an XMPP account for !EnDroid to use (free accounts can be created easily e.g. from 
+[[http://www.jabber.at/|jabber.at]]). 
+
+ Note: '''Do not use your own account''' as !EnDroid will cut down its contact list to users listed in the config file.
+
+Other settings that should be set are `users` - the list of users !EnDroid will communicate with - remember to add yourself to this and `rooms` the list of rooms !EnDroid will join. For more details
+on configuration see [[../Configuration|configuration]].
+
+= Running EnDroid =
+
+ * If you installed !EnDroid, you should be able to run it by typing `endroid` into the console.
+ * If you pulled the source, run !EnDroid using `src/endroid.sh`
+ * See `-h` for full list of command line arguments, some key ones are:
+   * `[-c <config-file>]` - specify an alternative config file.
+   * `[-l|--level] <log-level>` - specify the verbosity of the console log (lower is more verbose)
+   * `[-L|--logfile] <log-file>` - redirect the console logging to a file.
+   * `[-t|--logtraffic]` - log all the raw message xml to the file log.
+
+See the [[../Debugging|debugging page]] for more details on logging and `Manhole`.
+
+If you encounter any bugs please report them at [[https://bugs.launchpad.net/endroid|EnDroid launchpad]].
+
+Happy Droiding!
+
+= What Next? =
+
+Write some plugins to add some new functionality! See the [[../PluginTutorial|plugin tutorial]] to find out how easy it is.
+
