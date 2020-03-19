@@ -26,7 +26,7 @@ else:
     setup(name='endroid',
           version=version,
           description='EnDroid: a modular Webex bot',
-          url='http://open.ensoft.co.uk/EnDroid',
+          url='https://github.com/ensoft/endroid',
           packages=[
               'endroid',
               'endroid.plugins',
