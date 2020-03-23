@@ -282,7 +282,6 @@ class MessageHandler(object):
         filters = self._get_filters('muc', 'send', msg.recipient)
 
         if all(f.callback(msg) for f in filters):
-            logging.info("Sending message to room {}".format(room)) 
             self.wh.groupChat(room, body)
         else:
             # Need to rely on filters providing more detailed information
