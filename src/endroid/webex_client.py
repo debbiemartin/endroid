@@ -228,10 +228,13 @@ class WebexClient(object):
                     logger.info('Message from %s: %s',
                                 message.personEmail, message.text)
                     self.on_message(message)
+                except webexteamssdk.exceptions.ApiError as e:
+                    if e.status_code == 404:
+                        logger.info("Ignoring message as got 404 error - "
+                                    "perhaps no longer in room")
+                    else:
+                        logger.exception(e)
                 except Exception as e:
-                    # Just log the message, don't retry - failure to get a
-                    # message is normally due to no longer being in a room 
-                    # rather than timing.
                     logger.exception(e)
 
             elif activity['verb'] == 'add':
@@ -246,7 +249,7 @@ class WebexClient(object):
                                     event.data.personEmail, event.data.roomId)
                         self.on_membership(event.data)
                     except Exception as e:
-                        logger.exception
+                        logger.exception(e)
                         # If the event is still not findable, defer again.
                         later = reactor.callLater(EVENT_WAIT,
                                                   _process_membership, eventId)
