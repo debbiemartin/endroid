@@ -222,13 +222,16 @@ class WebexClient(object):
                 # Handle a message
                 logger.debug('activity verb is post, message id is %s',
                               activity['id'])
-                message = self.webex_api.messages.get(activity['id'])
-
-                logger.info('Message from %s: %s',
-                            message.personEmail, message.text)
                 try:
+                    message = self.webex_api.messages.get(activity['id'])
+
+                    logger.info('Message from %s: %s',
+                                message.personEmail, message.text)
                     self.on_message(message)
                 except Exception as e:
+                    # Just log the message, don't retry - failure to get a
+                    # message is normally due to no longer being in a room 
+                    # rather than timing.
                     logger.exception(e)
 
             elif activity['verb'] == 'add':
@@ -237,20 +240,22 @@ class WebexClient(object):
                 logger.debug('activity verb is add, event id is %s',
                               activity['id'])
                 def _process_membership(eventId):
-                    event = self.webex_api.events.get(eventId=eventId)
-                    logger.info('Membership created for %s into %s room',
-                                event.data.personEmail, event.data.roomId)
                     try:
+                        event = self.webex_api.events.get(eventId=eventId)
+                        logger.info('Membership created for %s into %s room',
+                                    event.data.personEmail, event.data.roomId)
                         self.on_membership(event.data)
                     except Exception as e:
                         logger.exception
-                        # If the event is still not findable, defer again
-                        later = reactor.callLater(EVENT_WAIT, 
+                        # If the event is still not findable, defer again.
+                        later = reactor.callLater(EVENT_WAIT,
                                                   _process_membership, eventId)
-                
-                later = reactor.callLater(EVENT_WAIT, _process_membership, 
+
+                # Defer the membership get since events are not immediately
+                # findable.
+                later = reactor.callLater(EVENT_WAIT, _process_membership,
                                           activity['id'])
-    
+
     @catch_api_errors
     def _process_connected(self):
         logging.info("In _process_connected")

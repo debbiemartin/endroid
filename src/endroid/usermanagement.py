@@ -76,6 +76,7 @@ class UserManagement(object):
 
     def __init__(self, wh, config):
         self.wh = wh
+
         # as yet unused - is analagous to the _handlers attribute of
         # messagehandler but will respond to presence notifications
         self._handlers = {}
@@ -307,12 +308,17 @@ class UserManagement(object):
         """
         logging.info("Joined room %s", room)
         
-        if room not in self._rooms.registered: 
+        if room not in self._rooms.registered:
             if remove:
-                self.wh.kick(self.wh.my_emails[0], room, 
+                self.wh.messagehandler.send_muc(
+                    room,
+                    "Hello! If you'd like me to stay in this room please get "
+                    "an EnDroid admin to add this RoomID ({}) to the "
+                    "config!".format(room), self.wh.my_emails[0])
+                self.wh.kick(self.wh.my_emails[0], room,
                              "Added to unrecognised room")
         else:
-            # We are being added to a room - sanitize all members against 
+            # We are being added to a room - sanitize all members against
             # config
             members = self.wh.getMemberList(room)
             for member in members:
