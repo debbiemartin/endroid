@@ -27,7 +27,7 @@ class Version(CommandPlugin):
     def version(self, msg, args):
         reply = "I'm running Endroid verson {}.".format(endroid.__version__)
         if self.version_info is not None:
-            reply += (" More specifically revno {revno} commited on "
+            reply += (" More specifically revno {revno} committed on "
                       "{date} and built on {build_date} (rev "
                       "{revision_id})".format(**self.version_info))
         msg.reply(reply)

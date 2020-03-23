@@ -9,11 +9,6 @@
 CURRENT_LOCATION="$( cd $( dirname "$0" ) && pwd )"
 
 #
-# Generate the version info
-#
-${CURRENT_LOCATION}/gen_version.sh
-
-#
 # Work out what the resulting deb file will be called
 # Why doesn't debuild just have an output argument!!!
 #

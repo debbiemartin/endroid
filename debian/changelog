@@ -1,3 +1,9 @@
+endroid (2.0.0) UNRELEASED; urgency=medium
+
+  * Move from XMPP to Webex teams protocol 
+
+ -- Deborah Martin <debomart@ensoft-linux4.cisco.com>  Mon, 23 Mar 2020 15:29:29 +0000
+
 endroid (1.4.9) xenial; urgency=medium
 
   * Change start up mechanism from upstart to Systemd 
