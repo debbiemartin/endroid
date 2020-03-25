@@ -1,0 +1,3 @@
+# Install the service file to /etc/systemd/system/ as this allows for the same
+# file to be installed by multiple packages
+systemd-service-file-outside-lib etc/systemd/system/endroid.service

@@ -198,7 +198,7 @@ class WebexClient(object):
             
     def _get_device_info(self):
         # Always create a new device 
-        logging.info('Creating new device info')
+        logger.info('Creating new device info')
         session = self.webex_api._session.post(DEVICES_URL, 
                                                json=DEVICE_DATA)
         if session is None:
@@ -230,36 +230,55 @@ class WebexClient(object):
                     self.on_message(message)
                 except webexteamssdk.exceptions.ApiError as e:
                     if e.status_code == 404:
-                        logger.info("Ignoring message as got 404 error - "
-                                    "perhaps no longer in room")
+                        logger.error("Ignoring message as got 404 error - "
+                                     "perhaps no longer in room")
                     else:
-                        logger.exception(e)
-                except Exception as e:
-                    logger.exception(e)
+                        logger.exception("Got exception processing message %s",
+                                         activity['id'])
+                except Exception:
+                    logger.exception("Got exception processing message %s", 
+                                     activity['id'])
 
             elif activity['verb'] == 'add':
                 # Handle a membership - defer getting the event for a second as
-                # it may not be immediately findable
+                # it may not be immediately findable.
                 logger.debug('activity verb is add, event id is %s',
                               activity['id'])
-                def _process_membership(eventId):
+                def _process_membership(eventId, attempt_num):
                     try:
                         event = self.webex_api.events.get(eventId=eventId)
                         logger.info('Membership created for %s into %s room',
                                     event.data.personEmail, event.data.roomId)
+                    except webexteamssdk.exceptions.ApiError as e:
+                        if attempt_num < 5:
+                            # If the event is still not findable, defer again.
+                            logger.error("Failed to lookup add event %s, "
+                                         "status code %s, retrying (%u)...", 
+                                         eventId, e.status_code, attempt_num)
+                            later = reactor.callLater(EVENT_WAIT,
+                                                      _process_membership, 
+                                                      eventId, attempt_num + 1)
+                        else:
+                            logger.error("Giving up lookup of add event after "
+                                         "%u retries", attempt_num)
+                        return
+                    except Exception:
+                        logger.exception("Got exception getting event %s", 
+                                         eventId)
+                        return
+
+                    try:
                         self.on_membership(event.data)
                     except Exception as e:
-                        logger.exception(e)
-                        # If the event is still not findable, defer again.
-                        later = reactor.callLater(EVENT_WAIT,
-                                                  _process_membership, eventId)
+                        logger.exception("Got exception processing membership "
+                                         "%s", eventId)
 
                 # Defer the membership get since events are not immediately
                 # findable.
                 later = reactor.callLater(EVENT_WAIT, _process_membership,
-                                          activity['id'])
+                                          activity['id'], 1)
 
     @catch_api_errors
     def _process_connected(self):
-        logging.info("In _process_connected")
+        logger.info("In _process_connected")
         self.connected()

@@ -64,15 +64,26 @@ class WebexHandler(object):
                                                      personEmail=user)
 
     def kick(self, user, room, reason): 
-        logging.info("Kicking person %s from room %s, reason: %s", 
+        logging.info("Kicking person %s from room %s, reason: %s",
                       user, room, reason)
+
         if self.client is not None:
             memberships = self.client.webex_api.memberships.list(
-                                                              roomId=room, 
+                                                              roomId=room,
                                                               personEmail=user)
             for membership in memberships:
-                self.client.webex_api.memberships.delete(
+                try:
+                    self.client.webex_api.memberships.delete(
                                                     membershipId=membership.id)
+                except webexteamssdk.exceptions.ApiError as e:
+                    if e.status_code == 403:
+                        logging.error("403 error on attempt to remove user from "
+                                    "room - Endroid may not be a moderator")
+                    else:
+                        logging.exception("Got exception deleting user from "
+                                         "room")
+                except Exception:
+                    logging.exception("Got exception deleting user from room")
 
     def chat(self, user, text):
         logging.info("Sending chat to user: %s", user)
