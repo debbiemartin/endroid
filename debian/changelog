@@ -1,8 +1,15 @@
-endroid (2.0.0) UNRELEASED; urgency=medium
+endroid (2.0.1) bionic; urgency=medium
+
+  * Install service file to /etc/systemd/system/
+  * Minor changes to logging, error handling and retries
+
+ -- Deborah Martin <debomart@ensoft-linux4.cisco.com>  Wed, 25 Mar 2020 21:11:47 +0000
+
+endroid (2.0.0) bionic; urgency=medium
 
   * Move from XMPP to Webex teams protocol 
 
- -- Deborah Martin <debomart@ensoft-linux4.cisco.com>  Mon, 23 Mar 2020 15:29:29 +0000
+ -- Deborah Martin <debomart@ensoft-linux4.cisco.com>  Wed, 25 Mar 2020 21:08:15 +0000
 
 endroid (1.4.9) xenial; urgency=medium
 

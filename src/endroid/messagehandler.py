@@ -324,7 +324,6 @@ class MessageHandler(object):
                                             timeout)
 
         if all(f.callback(msg) for f in filters):
-            logging.info("Sending message to {}".format(user))
             self.wh.chat(user, body) 
         else:
             # Need to rely on filters providing more detailed information

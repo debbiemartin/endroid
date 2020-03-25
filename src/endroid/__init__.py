@@ -27,7 +27,7 @@ from endroid.database import Database
 import endroid.manhole
 
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 
 LOGGING_FORMAT = '%(asctime)-8s %(name)-20s %(levelname)-8s %(message)s'
 LOGGING_DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
