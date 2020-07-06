@@ -7,11 +7,13 @@
 import re, logging
 import webexteamssdk
 
-from twisted.internet.task import LoopingCall
+import twisted.internet.reactor as reactor
+
 
 from endroid.messagehandler import Message
 from endroid.cron import Cron
 
+MAX_MESSAGE_LEN = 7439
 
 # Provides messaging and room handling
 class WebexHandler(object): 
@@ -87,14 +89,21 @@ class WebexHandler(object):
 
     def chat(self, user, text):
         logging.info("Sending chat to user: %s", user)
+
         if self.client is not None:
-            self.client.webex_api.messages.create(toPersonEmail=user, 
-                                                  text=text) 
+            self._send_message(text=text, toPersonEmail=user)
 
     def groupChat(self, room, text):
         logging.info("Sending chat to room: %s", room)
         if self.client is not None:
-            self.client.webex_api.messages.create(roomId=room, text=text)
+            self._send_message(text=text, roomId=room)
+
+    def _send_message(self, text, **kwargs):
+        chunk = text[0:MAX_MESSAGE_LEN]
+        self.client.webex_api.messages.create(text=chunk, **kwargs)
+        if len(text) > MAX_MESSAGE_LEN:
+            reactor.callLater(0, self._send_message, text[MAX_MESSAGE_LEN:],
+                              **kwargs)
 
     def _remove_tag(self, message):
         prefix = '>'
