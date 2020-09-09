@@ -94,7 +94,7 @@ class Endroid(object):
         self.webexhandler.setHandlerParent(self.client)
         self.client.set_callbacks(connected=self.webexhandler.connected,
                                   on_message=self.webexhandler.onMessage,
-                                  on_membership=self.webexhandler.onMembership) 
+                                  on_membership=self.webexhandler.onMembership)
 
         self.usermanagement = UserManagement(self.webexhandler,
                                              self.conf)

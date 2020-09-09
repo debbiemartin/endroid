@@ -61,7 +61,7 @@ class WebexHandler(object):
     def invite(self, user, room, reason):
         logging.info("Adding person %s to room %s, reason: %s", 
                      user, room, reason)
-        if self.client is not None:
+        if self.client is not None and self._is_moderator(room):
             self.client.webex_api.memberships.create(roomId=room, 
                                                      personEmail=user)
 
@@ -69,7 +69,8 @@ class WebexHandler(object):
         logging.info("Kicking person %s from room %s, reason: %s",
                       user, room, reason)
 
-        if self.client is not None:
+        if self.client is not None and \
+           (user in self.my_emails or self._is_moderator(room)):
             memberships = self.client.webex_api.memberships.list(
                                                               roomId=room,
                                                               personEmail=user)
@@ -77,13 +78,6 @@ class WebexHandler(object):
                 try:
                     self.client.webex_api.memberships.delete(
                                                     membershipId=membership.id)
-                except webexteamssdk.exceptions.ApiError as e:
-                    if e.status_code == 403:
-                        logging.error("403 error on attempt to remove user from "
-                                    "room - Endroid may not be a moderator")
-                    else:
-                        logging.exception("Got exception deleting user from "
-                                         "room")
                 except Exception:
                     logging.exception("Got exception deleting user from room")
 
@@ -104,6 +98,17 @@ class WebexHandler(object):
         if len(text) > MAX_MESSAGE_LEN:
             reactor.callLater(0, self._send_message, text[MAX_MESSAGE_LEN:],
                               **kwargs)
+
+    def _is_moderator(self, room):
+        if self.client is None:
+            return False
+        elif self.client.webex_api.rooms.get(room).isLocked and not \
+             self.my_emails[0] in self.getOwnerList(room):
+            logging.info("Endroid is not a moderator for room %s", room)
+            logging.info(self.getMemberList(room))
+            return False
+        else:
+            return True
 
     def _remove_tag(self, message):
         prefix = '>'
@@ -127,7 +132,7 @@ class WebexHandler(object):
         if self.client is not None:
             rooms = self.client.webex_api.rooms.list()
             # rejoin and sanitize multi-person rooms
-            for room in rooms: 
+            for room in rooms:
                 if room.type == 'group':
                     self.usermanagement.self_joined_room(room.id, remove=True)
 
@@ -167,21 +172,18 @@ class WebexHandler(object):
                 if self_message:
                     self.messagehandler.receive_self_chat(m)
                 else:
-                    logging.info("Direct message received from %s", 
+                    logging.info("Direct message received from %s",
                                  message.personEmail)
                     self.messagehandler.receive_chat(m)
 
     # called by Webex client
     # we use it to pass the membership notification onto our usermanagement
-    def onMembership(self, membership):
-        logging.info("User %s added to room %s", 
-                     membership.personEmail, 
-                     self.client.webex_api.rooms.get(membership.roomId).title)
+    def onMembership(self, room, user):
+        logging.info("User %s added to room %s",
+                     user,
+                     self.client.webex_api.rooms.get(room).title)
 
-        if membership.personEmail in self.client.my_emails:
-            self.usermanagement.self_joined_room(membership.roomId, 
-                                                 remove=True)
+        if user in self.client.my_emails:
+            self.usermanagement.self_joined_room(room, remove=True)
         else:
-            self.usermanagement.user_joined_room(membership.roomId, 
-                                                 membership.personEmail, 
-                                                 remove=True) 
+            self.usermanagement.user_joined_room(room, user, remove=True)
