@@ -27,7 +27,7 @@ from endroid.database import Database
 import endroid.manhole
 
 
-__version__ = "2.0.1"
+__version__ = "2.0.2"
 
 LOGGING_FORMAT = '%(asctime)-8s %(name)-20s %(levelname)-8s %(message)s'
 LOGGING_DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
@@ -94,7 +94,7 @@ class Endroid(object):
         self.webexhandler.setHandlerParent(self.client)
         self.client.set_callbacks(connected=self.webexhandler.connected,
                                   on_message=self.webexhandler.onMessage,
-                                  on_membership=self.webexhandler.onMembership) 
+                                  on_membership=self.webexhandler.onMembership)
 
         self.usermanagement = UserManagement(self.webexhandler,
                                              self.conf)

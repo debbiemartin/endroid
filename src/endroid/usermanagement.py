@@ -337,7 +337,8 @@ class UserManagement(object):
         Kicks the user from the room if not in the set of registered members
         for the room.
         """
-        if user not in self.get_users(room) and remove:
+        if room in self._rooms.registered and \
+           user not in self.get_users(room) and remove:
             self.wh.kick(user, room, "Unexpected user added to room")
 
     def joined_group(self, name):

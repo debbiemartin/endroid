@@ -32,10 +32,6 @@ DEVICE_DATA = {
     "systemVersion":"0.1"
 }
 
-# Time in seconds to wait after an event notification before attempting to get
-# the event from webexteamssdk
-EVENT_WAIT = 1
-
 logger = logging.getLogger("webex-client")
 
 def catch_api_errors(func):
@@ -222,6 +218,8 @@ class WebexClient(object):
                 # Handle a message
                 logger.debug('activity verb is post, message id is %s',
                               activity['id'])
+                # See whether Endroid is still in the room before attempting to
+                # retrieve the message
                 try:
                     message = self.webex_api.messages.get(activity['id'])
 
@@ -236,7 +234,7 @@ class WebexClient(object):
                         logger.exception("Got exception processing message %s",
                                          activity['id'])
                 except Exception:
-                    logger.exception("Got exception processing message %s", 
+                    logger.exception("Got exception processing message %s",
                                      activity['id'])
 
             elif activity['verb'] == 'add':
@@ -244,39 +242,12 @@ class WebexClient(object):
                 # it may not be immediately findable.
                 logger.debug('activity verb is add, event id is %s',
                               activity['id'])
-                def _process_membership(eventId, attempt_num):
-                    try:
-                        event = self.webex_api.events.get(eventId=eventId)
-                        logger.info('Membership created for %s into %s room',
-                                    event.data.personEmail, event.data.roomId)
-                    except webexteamssdk.exceptions.ApiError as e:
-                        if attempt_num < 5:
-                            # If the event is still not findable, defer again.
-                            logger.error("Failed to lookup add event %s, "
-                                         "status code %s, retrying (%u)...", 
-                                         eventId, e.status_code, attempt_num)
-                            later = reactor.callLater(EVENT_WAIT,
-                                                      _process_membership, 
-                                                      eventId, attempt_num + 1)
-                        else:
-                            logger.error("Giving up lookup of add event after "
-                                         "%u retries", attempt_num)
-                        return
-                    except Exception:
-                        logger.exception("Got exception getting event %s", 
-                                         eventId)
-                        return
-
-                    try:
-                        self.on_membership(event.data)
-                    except Exception as e:
-                        logger.exception("Got exception processing membership "
-                                         "%s", eventId)
-
-                # Defer the membership get since events are not immediately
-                # findable.
-                later = reactor.callLater(EVENT_WAIT, _process_membership,
-                                          activity['id'], 1)
+                try:
+                    self.on_membership(activity['target']['globalId'],
+                                       activity['object']['emailAddress'])
+                except Exception:
+                    logger.exception("Got exception processing membership "
+                                     "%s", activity['id'])
 
     @catch_api_errors
     def _process_connected(self):
