@@ -245,7 +245,7 @@ class WebexClient(object):
                 try:
                     self.on_membership(activity['target']['globalId'],
                                        activity['object']['emailAddress'])
-                except Exception as e:
+                except Exception:
                     logger.exception("Got exception processing membership "
                                      "%s", activity['id'])
 
